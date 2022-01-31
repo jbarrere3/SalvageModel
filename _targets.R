@@ -64,8 +64,10 @@ list(
                                            data.type = "simulated")),
   
   # Fit jags model
-  tar_target(jags.model, fit_mortality(data_jags, n.chains = 3, n.iter = 100, 
-                                       n.burn = 20, n.thin = 1, Dj_latent = T)),
+  tar_target(jags.model, fit_mortality(data_jags, n.chains = 3, n.iter = 5000, 
+                                       n.burn = 1000, n.thin = 1, Dj_latent = T)),
+  tar_target(jags.model_multinom, fit_mortality_multinom(data_jags, n.chains = 3, n.iter = 5000, 
+                                       n.burn = 1000, n.thin = 1, Dj_latent = T)),
   
   # Diagnostic plots
   tar_target(fig_jags.model_chains, 
@@ -74,5 +76,12 @@ list(
   tar_target(fig_jags.model_true.vs.fitted.param, 
              plot_fitted_vs_true_parameters(data_jags, jags.model, 
                                             "fig/model_diagnostic/fig_true_vs_fitted_param.png"), 
+             format = "file"),
+  tar_target(fig_jags.model.multinom_chains, 
+             plot_convergence(jags.model_multinom, file.in = "fig/model_diagnostic/fig_multinom_convergence.png"), 
+             format = "file"), 
+  tar_target(fig_jags.model.multinom_true.vs.fitted.param, 
+             plot_fitted_vs_true_parameters(data_jags, jags.model_multinom, 
+                                            "fig/model_diagnostic/fig_multinom_true_vs_fitted_param.png"), 
              format = "file")
 )

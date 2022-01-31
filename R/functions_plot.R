@@ -87,3 +87,76 @@ plot_fitted_vs_true_parameters <- function(data_jags, jags.model, file.in){
   ggsave(file.in, plot.in, width = 17, height = 12, units = "cm", dpi = 600)
   return(file.in)
 }
+
+
+#' Compare generated and fitted probabilities
+#' @param data_jags input for the jags model
+#' @param jags.model output of the jags model
+#' @param data_model_scaled data centered and scaled
+#' @param file.in Path and file where to save the plot
+compare_fitted_generated_probabilities <- function(data_jags, jags.model, data_model_scaled, 
+                                                   file.in){
+  ## - Create directories if needed
+  create_dir_if_needed(file.in)
+  
+  # Generated probabilities
+  proba_generated <- data_model_scaled %>%
+    # Compute intermediate probabilities based on parameters and data
+    mutate(pdD = data_jags$param$c0 + data_jags$param$c1*DS + data_jags$param$c2*DS*dbh, 
+           pdBM = data_jags$param$b0 + data_jags$param$b1*dbh + data_jags$param$b2*comp + data_jags$param$b3*sgdd + data_jags$param$b4*wai, 
+           phdD = data_jags$data$d0 + data_jags$data$d1*dbh + data_jags$data$d2*DS + data_jags$data$d3*dbh*DS, 
+           phadBM = data_jags$data$e0 + data_jags$data$e1*dbh) %>%
+    # Apply inverse logit function to constrain probabilities between 0 and 1
+    mutate(pdD = exp(pdD)/(1 + exp(pdD)), 
+           pdBM = exp(pdBM)/(1 + exp(pdBM)), 
+           phdD = exp(phdD)/(1 + exp(phdD)), 
+           phadBM = exp(phadBM)/(1 + exp(phadBM))) %>%
+    mutate(pdDj = 1 - (1 - pdD)*(1 - pdBM)) %>%
+    # Compute probability to be alive, dead or harvested
+    mutate(ph = (1 - D)*phadBM + D*pdDj*phdD, 
+           pd = (1 - D)*pdBM*(1 - phadBM) + D*pdDj*(1 - phdD)) %>%
+    mutate(pa = 1 - (ph + pd)) %>%
+    dplyr::select(ph, pd, pa, pdD, pdBM, pdDj)
+  
+  # Fitted parameters
+  param_fitted <- ggs(as.mcmc(jags.model)) %>%
+    filter(Parameter != "deviance") %>%
+    spread(key = Parameter, value = value) 
+  # Fitted probabilities
+  proba_fitted <- array(NA_real_, dim = c(dim(proba_generated), dim(param_fitted)[1]))
+  for(i in 1:dim(param_fitted)[1]){
+    if(floor(i/1000) == i/1000) print(paste0("Simulation ", i, "/", dim(param_fitted)[1]))
+    proba.sim.i <- data_model_scaled %>%
+      # Compute intermediate probabilities based on parameters and data
+      mutate(pdD = param_fitted$c0[i] + param_fitted$c1[i]*DS + param_fitted$c2[i]*DS*dbh, 
+             pdBM = param_fitted$b0[i] + param_fitted$b1[i]*dbh + param_fitted$b2[i]*comp + param_fitted$b3[i]*sgdd + param_fitted$b4[i]*wai, 
+             phdD = data_jags$data$d0 + data_jags$data$d1*dbh + data_jags$data$d2*DS + data_jags$data$d3*dbh*DS, 
+             phadBM = data_jags$data$e0 + data_jags$data$e1*dbh) %>%
+      # Apply inverse logit function to constrain probabilities between 0 and 1
+      mutate(pdD = exp(pdD)/(1 + exp(pdD)), 
+             pdBM = exp(pdBM)/(1 + exp(pdBM)), 
+             phdD = exp(phdD)/(1 + exp(phdD)), 
+             phadBM = exp(phadBM)/(1 + exp(phadBM))) %>%
+      mutate(pdDj = 1 - (1 - pdD)*(1 - pdBM)) %>%
+      # Compute probability to be alive, dead or harvested
+      mutate(ph = (1 - D)*phadBM + D*pdDj*phdD, 
+             pd = (1 - D)*pdBM*(1 - phadBM) + D*pdDj*(1 - phdD)) %>%
+      mutate(pa = 1 - (ph + pd)) %>%
+      dplyr::select(ph, pd, pa, pdD, pdBM, pdDj)
+    proba_fitted[, ,i] <- as.matrix(proba.sim.i)
+  }
+  proba_fitted <- as.data.frame(apply(proba_fitted, c(1, 2), mean)) 
+  colnames(proba_fitted) <-  colnames(proba_generated)
+  
+  plot.in <- cbind((proba_fitted %>% gather(key = "probability", value = "fitted_value")), 
+        (proba_generated %>% gather(key = "proba", value = "generated_value"))) %>%
+    dplyr::select(-proba) %>%
+    ggplot(aes(x = generated_value, y = fitted_value)) + 
+    geom_point() +
+    facet_wrap(~ probability, scales = "free") + 
+    theme_bw()
+  
+  ## - save the plot
+  ggsave(file.in, plot.in, width = 17, height = 12, units = "cm", dpi = 600)
+  return(file.in)
+}

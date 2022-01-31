@@ -83,5 +83,9 @@ list(
   tar_target(fig_jags.model.multinom_true.vs.fitted.param, 
              plot_fitted_vs_true_parameters(data_jags, jags.model_multinom, 
                                             "fig/model_diagnostic/fig_multinom_true_vs_fitted_param.png"), 
-             format = "file")
+             format = "file"),
+  tar_target(fig_compare_generated_fitted_probabilities, 
+             compare_fitted_generated_probabilities(data_jags, jags.model, 
+                                                    subset(data_model_scaled, species == "Abies alba"), 
+                                                    "fig/model_diagnostic/fig_compare_fitted_generated_probabilities.png"))
 )

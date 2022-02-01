@@ -60,14 +60,14 @@ list(
   
   # Generate input data for the model
   tar_target(data_jags, generate_data_jags(subset(data_model_scaled, species == "Abies alba"), 
-                                           param_harvest_proba, Dj_latent = TRUE, 
+                                           param_harvest_proba, Dj_latent = F, 
                                            data.type = "simulated")),
   
   # Fit jags model
   tar_target(jags.model, fit_mortality(data_jags, n.chains = 3, n.iter = 5000, 
-                                       n.burn = 1000, n.thin = 1, Dj_latent = T)),
+                                       n.burn = 1000, n.thin = 1, Dj_latent = F)),
   tar_target(jags.model_multinom, fit_mortality_multinom(data_jags, n.chains = 3, n.iter = 5000, 
-                                       n.burn = 1000, n.thin = 1, Dj_latent = T)),
+                                       n.burn = 1000, n.thin = 1, Dj_latent = F)),
   
   # Diagnostic plots
   tar_target(fig_jags.model_chains, 

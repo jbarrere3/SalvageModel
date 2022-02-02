@@ -26,7 +26,7 @@ for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.pack
 # Targets options
 options(tidyverse.quiet = TRUE)
 tar_option_set(packages = packages.in)
-
+set.seed(2)
 
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -58,34 +58,36 @@ list(
   # Get parameters for harvest conditional probabilities
   tar_target(param_harvest_proba, get_param_harvest_proba(data_model_scaled)),
   
-  # Generate input data for the model
-  tar_target(data_jags, generate_data_jags(subset(data_model_scaled, species == "Abies alba"), 
-                                           param_harvest_proba, Dj_latent = F, 
-                                           data.type = "simulated")),
+  # Generate input data for the model with disturbance latent
+  tar_target(data_simulated, simulate_status(subset(data_model_scaled, species == "Abies alba"), 
+                                             param_harvest_proba, Dj_latent = TRUE)),
+  tar_target(data_jags_simulated, generate_data_jags_from_simulated(data_simulated, Dj_latent = TRUE)),
   
-  # Fit jags model
-  tar_target(jags.model, fit_mortality(data_jags, n.chains = 3, n.iter = 5000, 
-                                       n.burn = 1000, n.thin = 1, Dj_latent = F)),
-  tar_target(jags.model_multinom, fit_mortality_multinom(data_jags, n.chains = 3, n.iter = 5000, 
-                                       n.burn = 1000, n.thin = 1, Dj_latent = F)),
+  # Generate input data for the model with disturbance given
+  tar_target(data_simulated_D, simulate_status(subset(data_model_scaled, species == "Abies alba"), 
+                                             param_harvest_proba, Dj_latent = FALSE)),
+  tar_target(data_jags_simulated_D, generate_data_jags_from_simulated(data_simulated_D, Dj_latent = FALSE)),
+  
+  
+  # Fit jags model with disturbance latent
+  tar_target(jags.model, fit_mortality(data_jags_simulated, n.chains = 3, n.iter = 5000, 
+                                       n.burn = 1000, n.thin = 1)),
+  tar_target(jags.model_D, fit_mortality_D(data_jags_simulated_D, n.chains = 3, n.iter = 5000, 
+                                       n.burn = 1000, n.thin = 1)),
   
   # Diagnostic plots
   tar_target(fig_jags.model_chains, 
              plot_convergence(jags.model, file.in = "fig/model_diagnostic/fig_convergence.png"), 
              format = "file"), 
-  tar_target(fig_jags.model_true.vs.fitted.param, 
-             plot_fitted_vs_true_parameters(data_jags, jags.model, 
-                                            "fig/model_diagnostic/fig_true_vs_fitted_param.png"), 
-             format = "file"),
-  tar_target(fig_jags.model.multinom_chains, 
-             plot_convergence(jags.model_multinom, file.in = "fig/model_diagnostic/fig_multinom_convergence.png"), 
+  tar_target(fig_jags.model_chains_D, 
+             plot_convergence(jags.model_D, file.in = "fig/model_diagnostic/fig_convergence_D.png"), 
              format = "file"), 
-  tar_target(fig_jags.model.multinom_true.vs.fitted.param, 
-             plot_fitted_vs_true_parameters(data_jags, jags.model_multinom, 
-                                            "fig/model_diagnostic/fig_multinom_true_vs_fitted_param.png"), 
-             format = "file"),
-  tar_target(fig_compare_generated_fitted_probabilities, 
-             compare_fitted_generated_probabilities(data_jags, jags.model, 
-                                                    subset(data_model_scaled, species == "Abies alba"), 
-                                                    "fig/model_diagnostic/fig_compare_fitted_generated_probabilities.png"))
+  tar_target(fig_fitted_vs_true, 
+             plot_fitted_vs_true_parameters(list(param = list(a0 = 0, a1 = 3, b0 = 0, b1 = -3, b2 = 3, 
+                                                              b3 = -3, b4 = 3, c0 = 0, c1 = 3, c2 = -3)), 
+                                            jags.model, "fig/model_diagnostic/fitted_vs_true.png")), 
+  tar_target(fig_fitted_vs_true_D, 
+             plot_fitted_vs_true_parameters(list(param = list(b0 = 0, b1 = -3, b2 = 3, b3 = -3, 
+                                                              b4 = 3, c0 = 0, c1 = 3, c2 = -3)), 
+                                            jags.model_D, "fig/model_diagnostic/fitted_vs_true_D.png"))
 )

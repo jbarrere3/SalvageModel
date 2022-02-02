@@ -329,99 +329,87 @@ get_param_harvest_proba <- function(data_model_scaled){
 }
 
 
-#' generate data for the jags model
+#' Simulate tree status data for the jags model
 #' @param data.in dataframe containing plot and tree variable centered and scaled
 #' @param param_harvest_proba list containing the parameters for the harvest conditional proobabilities
 #' @param Dj_latent Boolean specifying if the variable Dj (occurence of a disturbance) comes from 
 #'                  the data or should be estimated
-#' @param data.type character with two possible values: 
-#'                  "true.data" use the tree status observed in the data
-#'                  "simulated" simulate the tree status with fixed parameters
-generate_data_jags <- function(data.in, param_harvest_proba, Dj_latent, data.type){
-  # separate data at plot and tree level
-  data_plots <- data.in %>%
-    dplyr::select(plotcode, wai, sgdd, DA = DA.Senf, DS = DS.Senf, D) %>%
-    distinct() %>%
-    mutate(beg = NA_real_, end = NA_real_)
-  for(i in 1:dim(data_plots)[1]){
-    trees_i <- which(data.in$plotcode == data_plots$plotcode[i])
-    data_plots$beg[i] <- trees_i[1]
-    data_plots$end[i] <- trees_i[length(trees_i)]}
-  data_trees <- subset(data.in, select = c("h", "d", "a", "dbh", "comp"))
+#' @param par list containing the parameters value used to simulate the data
+#' @author Björn Reineking, Julien Barrere
+simulate_status <- function(data.in, param_harvest_proba, Dj_latent, 
+                            par = list(a0 = 0, a1 = 3, b0 = 0, b1 = -3, b2 = 3, 
+                                       b3 = -3, b4 = 3, c0 = 0, c1 = 3, c2 = -3)) {
   
-  # Output list
-  data_jags <- list(
-    # At the plot level
-    Nplots = dim(data_plots)[1],
-    wai = data_plots$wai,
-    sgdd = data_plots$sgdd,
-    #DA = data_plots$DA,
-    DS = data_plots$DS,
-    beg = data_plots$beg,
-    end = data_plots$end,
-    # At the tree level
-    dbh = data_trees$dbh,
-    comp = data_trees$comp,
-    # priors
-    d0 = param_harvest_proba$d0,
-    d1 = param_harvest_proba$d1,
-    d2 = param_harvest_proba$d2,
-    d3 = param_harvest_proba$d3,
-    e0 = param_harvest_proba$e0,
-    e1 = param_harvest_proba$e1)
-  
-  ## - When data are not simulated
-  if(data.type == "true.data"){
-    data_jags$h = data_trees$h
-    data_jags$d = data_trees$d
-    data_jags$a = data_trees$a
-    if(Dj_latent) data_jags$DA = data_plots$DA
-    else data_jags$D = data_plots$D
-  } else{
-    ## - If data are simulated
-    
-    # Initiate parameters value
-    par <- list(b0 = 0, b1 = -3, b2 = 3, 
-                b3 = -3, b4 = 3, c0 = 0, c1 = 3, c2 = -3)
-    
-    # Case when Dj is latent
-    if(Dj_latent){
-      par$a0 = 0; par$a1 = 3
-      data_jags$D = rbinom(dim(data_plots)[1], 1, exp(par$a0+par$a1*data_plots$DA)/(1+exp(par$a0+par$a1*data_plots$DA))) 
-      data_jags$DA = data_plots$DA} else{data_jags$D = data_plots$D}
-    
-    prob = data.in %>%
-      dplyr::select(-D) %>%
-      left_join(data.frame(plotcode = data_plots$plotcode, D = data_jags$D), 
-                by = "plotcode") %>%
-      # Compute intermediate probabilities based on parameters and data
-      mutate(pdD = par$c0 + par$c1*DS + par$c2*DS*dbh, 
-             pdBM = par$b0 + par$b1*dbh + par$b2*comp + par$b3*sgdd + par$b4*wai, 
-             phdD = param_harvest_proba$d0 + param_harvest_proba$d1*dbh + param_harvest_proba$d2*DS + param_harvest_proba$d3*dbh*DS, 
-             phadBM = param_harvest_proba$e0 + param_harvest_proba$e1*dbh) %>%
-      # Apply inverse logit function to constrain probabilities between 0 and 1
-      mutate(pdD = exp(pdD)/(1 + exp(pdD)), 
-             pdBM = exp(pdBM)/(1 + exp(pdBM)), 
-             phdD = exp(phdD)/(1 + exp(phdD)), 
-             phadBM = exp(phadBM)/(1 + exp(phadBM))) %>%
-      mutate(pdDj = 1 - (1 - pdD)*(1 - pdBM)) %>%
-      # Compute probability to be alive, dead or harvested
-      mutate(ph = (1 - D)*phadBM + D*pdDj*phdD, 
-             pd = (1 - D)*pdBM*(1 - phadBM) + D*pdDj*(1 - phdD)) %>%
-      mutate(pa = 1 - (ph + pd)) %>%
-      dplyr::select(ph, pd, pa)
-    
-    status <- data.frame(h = numeric(0), d = numeric(0), a = numeric(0))
-    for(i in 1:dim(prob)[1]) status[i, ] <- as.integer(rmultinom(1, 1, as.numeric(prob[i, ])))
-    
-    data_jags$h = status$h
-    data_jags$a = status$a
-    data_jags$d = status$d
-    
+  # Add simulated disturbance events
+  plot_data <- data.in %>%
+    dplyr::select(plotcode, DA = DA.Senf, DS = DS.Senf, D) %>% distinct(plotcode, .keep_all = TRUE) 
+  if(Dj_latent) {
+    plot_data <- plot_data %>% mutate(D = rbinom(NROW(plot_data), size = 1, prob = plogis(par$a0 + par$a1 * DA)))
   }
+  tree_data <- left_join(dplyr::select(data.in, -D, -DS), plot_data, by = "plotcode")
   
-  out <- list()
-  out$data <- data_jags
-  if(data.type == "simulated") out$param <- par
-  return(out)
+  d0 = param_harvest_proba$d0
+  d1 = param_harvest_proba$d1
+  d2 = param_harvest_proba$d2
+  d3 = param_harvest_proba$d3
+  e0 = param_harvest_proba$e0
+  e1 = param_harvest_proba$e1
+  
+  # Compute probabilities based on parameters and data
+  tree_data <- tree_data %>%
+    mutate(pdD = plogis(par$c0 + par$c1*DS + par$c2*DS*dbh), 
+           pdBM = plogis(par$b0 + par$b1*dbh + par$b2*comp + par$b3*sgdd + par$b4*wai), 
+           phdD = plogis(d0 + d1*dbh + d2*DS + d3*dbh*DS), 
+           phadBM = plogis(e0 + e1*dbh),
+           pdDj = 1 - (1 - pdD)*(1 - pdBM),
+           ph = (1 - D)*phadBM + D*pdDj*phdD, 
+           pd = (1 - D)*pdBM*(1 - phadBM) + D*pdDj*(1 - phdD),
+           pa = 1 - (ph + pd))
+  
+  # Multinomial realisation of tree state - we have to call rmultinom for each tree separately
+  hda <- t(apply(tree_data[, c("ph", "pd", "pa")], 1, function(x) rmultinom(n = 1, size = 1, prob = x)))
+  colnames(hda) <- c("h", "d", "a")
+  tree_data <- cbind(dplyr::select(tree_data, -h, -d, -a), hda)
+  tree_data
+}
+
+
+#' generate data for the jags model using simulated data
+#' @param data_simulated dataset where the tree status (dead, alive or harvested) is simulated
+#' @param Dj_latent Boolean specifying if the variable Dj (occurence of a disturbance) comes from 
+#'                  the data or should be estimated
+#' @author Björn Reineking, Julien Barrere
+generate_data_jags_from_simulated <- function(data_simulated, Dj_latent) {
+  if (Dj_latent) {
+    # separate data at plot and tree level
+    plot_data <- data_simulated %>%
+      dplyr::select(plotcode, D, DA = DA.Senf, DS = DS.Senf) %>% distinct(plotcode, .keep_all = TRUE)
+    
+    # Add variable "plot" from 1:n_plots, and sort plot data by this variable.
+    # This is important because we will use the variable "plot" of a given tree as row number to access 
+    # the corresponding plot data in jags
+    plot_data <- plot_data %>% mutate(plot = as.integer(as.factor(plotcode))) %>% arrange(plot)
+    # Tree data
+    data_simulated <- left_join(dplyr::select(data_simulated, -D, -DS), plot_data, by = "plotcode")
+  }
+  data_jags <- list(
+    Ntrees = NROW(data_simulated),
+    dbh = data_simulated$dbh,
+    comp = data_simulated$comp,
+    sgdd = data_simulated$sgdd,
+    wai = data_simulated$wai,
+    DS = data_simulated$DS.Senf,
+    phdD = data_simulated$phdD,
+    phadBM = data_simulated$phdD,
+    state = apply(dplyr::select(data_simulated, h, d, a), 1, which.max)
+  )
+  
+  if (Dj_latent) {
+    data_jags$Nplots <- NROW(plot_data)
+    data_jags$DA <- plot_data$DA
+    data_jags$plot <- data_simulated$plot
+  } else {
+    data_jags$D <- data_simulated$D
+  }
+  data_jags
 }

@@ -413,3 +413,14 @@ generate_data_jags_from_simulated <- function(data_simulated, Dj_latent) {
   }
   data_jags
 }
+
+#' Add probability that a disturbance occurs to data_jags
+#' @param data_jags input data for the jags model (must have been generated with Dj_latent = TRUE)
+#' @param a0 numeric value for a0 parameter (intercept for disturbance occurrence)
+#' @param a1 numeric value for a1 parameter (effect on DA on disturbance occurrence)
+add_pD_to_data_jags <- function(data_jags, a0, a1){
+  out <- data_jags
+  out$pD <- plogis(a0 + a1*out$DA)
+  out <- out[-which(names(out) == "DA")]
+  return(out)
+}

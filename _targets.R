@@ -68,12 +68,16 @@ list(
                                              param_harvest_proba, Dj_latent = FALSE)),
   tar_target(data_jags_simulated_D, generate_data_jags_from_simulated(data_simulated_D, Dj_latent = FALSE)),
   
+  # Generate input data for the model with parameters a0 and a1 given
+  tar_target(data_jags_simulated_a, add_pD_to_data_jags(data_jags_simulated, a0 = -1.2, a1 = 0.8)),
   
-  # Fit jags model with disturbance latent
+  # Fit jags models
   tar_target(jags.model, fit_mortality(data_jags_simulated, n.chains = 3, n.iter = 5000, 
                                        n.burn = 1000, n.thin = 1)),
   tar_target(jags.model_D, fit_mortality_D(data_jags_simulated_D, n.chains = 3, n.iter = 5000, 
                                        n.burn = 1000, n.thin = 1)),
+  tar_target(jags.model_a, fit_mortality_a(data_jags_simulated_a, n.chains = 3, n.iter = 5000, 
+                                           n.burn = 1000, n.thin = 1)),
   
   # Diagnostic plots
   tar_target(fig_jags.model_chains, 
@@ -82,6 +86,9 @@ list(
   tar_target(fig_jags.model_chains_D, 
              plot_convergence(jags.model_D, file.in = "fig/model_diagnostic/fig_convergence_D.png"), 
              format = "file"), 
+  tar_target(fig_jags.model_chains_a, 
+             plot_convergence(jags.model_a, file.in = "fig/model_diagnostic/fig_convergence_a.png"), 
+             format = "file"), 
   tar_target(fig_fitted_vs_true, 
              plot_fitted_vs_true_parameters(list(param = list(a0 = 0, a1 = 3, b0 = 0, b1 = -3, b2 = 3, 
                                                               b3 = -3, b4 = 3, c0 = 0, c1 = 3, c2 = -3)), 
@@ -89,5 +96,9 @@ list(
   tar_target(fig_fitted_vs_true_D, 
              plot_fitted_vs_true_parameters(list(param = list(b0 = 0, b1 = -3, b2 = 3, b3 = -3, 
                                                               b4 = 3, c0 = 0, c1 = 3, c2 = -3)), 
-                                            jags.model_D, "fig/model_diagnostic/fitted_vs_true_D.png"))
+                                            jags.model_D, "fig/model_diagnostic/fitted_vs_true_D.png")), 
+  tar_target(fig_fitted_vs_true_a, 
+             plot_fitted_vs_true_parameters(list(param = list(b0 = 0, b1 = -3, b2 = 3, b3 = -3, 
+                                                              b4 = 3, c0 = 0, c1 = 3, c2 = -3)), 
+                                            jags.model_a, "fig/model_diagnostic/fitted_vs_true_a.png"))
 )

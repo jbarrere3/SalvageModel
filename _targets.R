@@ -26,7 +26,7 @@ for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.pack
 # Targets options
 options(tidyverse.quiet = TRUE)
 tar_option_set(packages = packages.in)
-
+set.seed(2)
 
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -34,6 +34,9 @@ tar_option_set(packages = packages.in)
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 list(
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # - Step 1 - Download and format raw data
+  
   # Download files
   tar_target(files, get_FrenchNFI(), format = "file"), 
   
@@ -51,6 +54,9 @@ list(
   tar_target(FUNDIV_tree_FR, format_FrenchNFI_tree_to_FUNDIV(FrenchNFI, FrenchNFI_species)), 
   tar_target(FUNDIV_plot_FR, format_FrenchNFI_plot_to_FUNDIV(FrenchNFI, FUNDIV_tree_FR)), 
   
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # - Step 2 - Prepare data for the model
+  
   # Keep and scale variables relevant to the model
   tar_target(data_model, format_data_model(FUNDIV_tree_FR, FUNDIV_plot_FR, Disturbance, Climate)), 
   tar_target(data_model_scaled, scale_data_model(data_model)), 
@@ -58,34 +64,68 @@ list(
   # Get parameters for harvest conditional probabilities
   tar_target(param_harvest_proba, get_param_harvest_proba(data_model_scaled)),
   
-  # Generate input data for the model
-  tar_target(data_jags, generate_data_jags(subset(data_model_scaled, species == "Abies alba"), 
-                                           param_harvest_proba, Dj_latent = TRUE, 
-                                           data.type = "simulated")),
+  # Generate input data for the model with disturbance latent
+  tar_target(data_simulated, simulate_status(subset(data_model_scaled, species == "Abies alba"), 
+                                             param_harvest_proba, Dj_latent = TRUE)),
+  tar_target(data_jags_simulated, generate_data_jags_from_simulated(data_simulated, Dj_latent = TRUE)),
   
-  # Fit jags model
-  tar_target(jags.model, fit_mortality(data_jags, n.chains = 3, n.iter = 5000, 
-                                       n.burn = 1000, n.thin = 1, Dj_latent = T)),
-  tar_target(jags.model_multinom, fit_mortality_multinom(data_jags, n.chains = 3, n.iter = 5000, 
-                                       n.burn = 1000, n.thin = 1, Dj_latent = T)),
+  # Generate input data for the model with disturbance given
+  tar_target(data_simulated_D, simulate_status(subset(data_model_scaled, species == "Abies alba"), 
+                                             param_harvest_proba, Dj_latent = FALSE)),
+  tar_target(data_jags_simulated_D, generate_data_jags_from_simulated(data_simulated_D, Dj_latent = FALSE)),
   
-  # Diagnostic plots
+  # Generate input data for the model with parameters a0 and a1 given
+  tar_target(data_jags_simulated_a, add_pD_to_data_jags(data_jags_simulated, a0 = -1.2, a1 = 0.8)),
+  
+  # Generate input data for jags with real data 
+  tar_target(param_disturbance_proba, get_param_disturbance_proba(data_model_scaled)), 
+  tar_target(data_jags_A.alba, generate_data_jags(subset(data_model_scaled, species == "Abies alba"),
+                                                  param_harvest_proba)), 
+  tar_target(data_jags_A.alba_a, add_pD_to_data_jags(data_jags_A.alba, 
+                                                     a0 = param_disturbance_proba$a0, 
+                                                     a1 = param_disturbance_proba$a1)),
+  
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # - Step 3 - Fit the jags model
+  
+  # Fit jags models
+  tar_target(jags.model, fit_mortality(data_jags_simulated, n.chains = 3, n.iter = 5000, 
+                                       n.burn = 1000, n.thin = 1)),
+  tar_target(jags.model_D, fit_mortality_D(data_jags_simulated_D, n.chains = 3, n.iter = 5000, 
+                                       n.burn = 1000, n.thin = 1)),
+  tar_target(jags.model_a, fit_mortality_a(data_jags_simulated_a, n.chains = 3, n.iter = 5000, 
+                                           n.burn = 1000, n.thin = 1)),
+  tar_target(jags.model_A.alba_a, fit_mortality_a(data_jags_A.alba_a, n.chains = 3, 
+                                                  n.iter = 5000, n.burn = 1000, n.thin = 1)), 
+  
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # - Step 4 - Plot the outputs of the model
+  
+  # Convergence
   tar_target(fig_jags.model_chains, 
              plot_convergence(jags.model, file.in = "fig/model_diagnostic/fig_convergence.png"), 
              format = "file"), 
-  tar_target(fig_jags.model_true.vs.fitted.param, 
-             plot_fitted_vs_true_parameters(data_jags, jags.model, 
-                                            "fig/model_diagnostic/fig_true_vs_fitted_param.png"), 
-             format = "file"),
-  tar_target(fig_jags.model.multinom_chains, 
-             plot_convergence(jags.model_multinom, file.in = "fig/model_diagnostic/fig_multinom_convergence.png"), 
+  tar_target(fig_jags.model_chains_D, 
+             plot_convergence(jags.model_D, file.in = "fig/model_diagnostic/fig_convergence_D.png"), 
              format = "file"), 
-  tar_target(fig_jags.model.multinom_true.vs.fitted.param, 
-             plot_fitted_vs_true_parameters(data_jags, jags.model_multinom, 
-                                            "fig/model_diagnostic/fig_multinom_true_vs_fitted_param.png"), 
-             format = "file"),
-  tar_target(fig_compare_generated_fitted_probabilities, 
-             compare_fitted_generated_probabilities(data_jags, jags.model, 
-                                                    subset(data_model_scaled, species == "Abies alba"), 
-                                                    "fig/model_diagnostic/fig_compare_fitted_generated_probabilities.png"))
+  tar_target(fig_jags.model_chains_a, 
+             plot_convergence(jags.model_a, file.in = "fig/model_diagnostic/fig_convergence_a.png"), 
+             format = "file"), 
+  tar_target(fig_jags.model_A.alba_chains_a, 
+             plot_convergence(jags.model_A.alba_a, file.in = "fig/real_outputs/fig_convergence_Aalba_a.png"), 
+             format = "file"), 
+  
+  # Parameters value
+  tar_target(fig_fitted_vs_true, 
+             plot_fitted_vs_true_parameters(list(param = list(a0 = 0, a1 = 3, b0 = 0, b1 = -3, b2 = 3, 
+                                                              b3 = -3, b4 = 3, c0 = 0, c1 = 3, c2 = -3)), 
+                                            jags.model, "fig/model_diagnostic/fitted_vs_true.png")), 
+  tar_target(fig_fitted_vs_true_D, 
+             plot_fitted_vs_true_parameters(list(param = list(b0 = 0, b1 = -3, b2 = 3, b3 = -3, 
+                                                              b4 = 3, c0 = 0, c1 = 3, c2 = -3)), 
+                                            jags.model_D, "fig/model_diagnostic/fitted_vs_true_D.png")), 
+  tar_target(fig_fitted_vs_true_a, 
+             plot_fitted_vs_true_parameters(list(param = list(b0 = 0, b1 = -3, b2 = 3, b3 = -3, 
+                                                              b4 = 3, c0 = 0, c1 = 3, c2 = -3)), 
+                                            jags.model_a, "fig/model_diagnostic/fitted_vs_true_a.png"))
 )

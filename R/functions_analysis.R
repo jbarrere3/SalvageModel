@@ -11,129 +11,73 @@
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-#' Fit the mortality model
+#' Fit the mortality model with disturbance event as a latent variable
 #' @param data_jags.in List contianing all the inputs of the model
 #' @param n.chains numeric: Number of MCMC Markov chains
 #' @param n.iter numeric: Number of iterations
 #' @param n.burn numeric: Burn-in
 #' @param n.thin numeric: Thinning rate
-#' @param Dj_latent Boolean specifying if the variable Dj (occurence of a disturbance) comes from 
-#'                  the data or should be estimated
 #' @return A rjags object
-fit_mortality <- function(data_jags.in, n.chains, n.iter, n.burn, n.thin, Dj_latent){
+fit_mortality <- function(data_jags.in, n.chains, n.iter, n.burn, n.thin){
   
-  ## - Write the model
-  
-  # Loop on all plots
-  model.plot.loops <- c("# Loop on all plots
-                        for(j in 1:Nplots){", 
-                        "
-                        }")
-  if(Dj_latent){
-    model.plot.loops[1] <- paste0(model.plot.loops[1], 
-                                  "
-                                  D[j] ~ dbern(pD[j])
-                                  logit(pD[j]) = a0 + a1*DA[j]
-                                  ")
-  }
-  
-  # Loop on all trees
-  model.trees.loop <- "
-  # Loop on trees
-    for(i in beg[j]:end[j]){
-      
+  ## - Write the mortality model 
+  mortality_model <- function() {
+    # Loop over all plots
+    for (j in 1:Nplots) {
+      D[j] ~ dbern(pD[j])
+      logit(pD[j]) = a0 + a1*DA[j]
+    }
+    
+    for (i in 1:Ntrees) {
+      state[i] ~ dcat(proba[i, 1:3])
       # Probability to observe harvested tree
-      h[i] ~ dbern(ph[i])
-      ph[i] = (1 - D[j])*phadBM[i] + D[j]*pdDj[i]*phdD[i]
-      
+      proba[i, 1] = (1 - D[plot[i]])*phadBM[i] + D[plot[i]]*pdDj[i]*phdD[i]
       # Probability to observe dead tree
-      d[i] ~ dbern(pd[i])
-      pd[i] = (1 - D[j])*pdBM[i]*(1 - phadBM[i]) + D[j]*pdDj[i]*(1 - phdD[i])
-      
+      proba[i, 2] = (1 - D[plot[i]])*pdBM[i]*(1 - phadBM[i]) + D[plot[i]]*pdDj[i]*(1 - phdD[i])
       # Probability to observe alive tree
-      a[i] ~ dbern(pa[i])
-      pa[i] = (1 - D[j])*(1 - pdBM[i])*(1 - phadBM[i]) + D[j]*(1 - pdDj[i])
-      
+      proba[i, 3] = (1 - D[plot[i]])*(1 - pdBM[i])*(1 - phadBM[i]) + D[plot[i]]*(1 - pdDj[i])
       # Probability to die in disturbed plots
       pdDj[i] = 1 - (1 - pdBM[i])*(1 - pdD[i])
-      
       # Probability to die from background mortality
-      logit(pdBM[i]) = b0 + b1*dbh[i] + b2*comp[i] + b3*sgdd[j] + b4*wai[j]
-      
+      logit(pdBM[i]) = b0 + b1*dbh[i] + b2*comp[i] + b3*sgdd[i] + b4*wai[i]
       # Probability to die from a disturbance
-      logit(pdD[i]) = c0 + c1*DS[j] + c2*dbh[i]*DS[j]
-      
-      # Probability to be harvested knowing that the tree is dead from a disturbance
-      logit(phdD[i]) = d0 + d1*dbh[i] + d2*DS[j] + d3*dbh[i]*DS[j]
-      
-      # Probability to be harvested in undisturbed plots
-      logit(phadBM[i]) = e0 + e1*dbh[i]
+      logit(pdD[i]) = c0 + c1*DS[i] + c2*dbh[i]*DS[i]
     }
-  "
-  
-  
-  # Priors
-  model.priors <- "
-  b0 ~ dnorm(0, 0.01)
-  b1 ~ dnorm(-1.5, 0.01)
-  b2 ~ dnorm(3, 0.01)
-  b3 ~ dnorm(-1.5, 0.01)
-  b4 ~ dnorm(1.5, 0.01)
-  c0 ~ dnorm(0, 0.01)
-  c1 ~ dnorm(3, 0.01)
-  c2 ~ dnorm(-1.5, 0.01)
-  "
-  if(Dj_latent){model.priors <- paste0("
-                                       a0 ~ dnorm(0, 0.01)
-                                       a1 ~ dnorm(1.5, 0.01)
-                                       ", model.priors)}
-  
-  # Full Model
-  model <- paste0("model{
-                  ", model.plot.loops[1], 
-                  model.trees.loop, model.plot.loops[2], 
-                  model.priors, "}")
- 
-  
-  ## - Function to initialize priors
-  if(Dj_latent){
-    initjags <- function(){
-      return(list(a0 = runif(1, -5, 5),
-                  a1 = runif(1, 0, 5),
-                  b0 = runif(1, -5, 5),
-                  b1 = runif(1, -5, 0),
-                  b2 = runif(1, 2, 5),
-                  b3 = runif(1, -5, 0),
-                  b4 = runif(1, 0, 5),
-                  c0 = runif(1, -5, 5),
-                  c1 = runif(1, 2, 5),
-                  c2 = runif(1, -5, 0)))
-    }
-    param.in <- c("a0", "a1", "b0", "b1", "b2", "b3", 
-                  "b4", "c0", "c1", "c2")
-  } else {
-    initjags <- function(){
-      return(list(b0 = runif(1, -5, 5),
-                  b1 = runif(1, -5, 0),
-                  b2 = runif(1, 2, 5),
-                  b3 = runif(1, -5, 0),
-                  b4 = runif(1, 0, 5),
-                  c0 = runif(1, -5, 5),
-                  c1 = runif(1, 2, 5),
-                  c2 = runif(1, -5, 0)))
-    }
-    param.in <- c("b0", "b1", "b2", "b3", 
-                  "b4", "c0", "c1", "c2")
+    
+    # Priors
+    a0 ~ dnorm(0, 0.01)
+    a1 ~ dnorm(0, 0.01)
+    b0 ~ dnorm(0, 0.01)
+    b1 ~ dnorm(0, 0.01)
+    b2 ~ dnorm(0, 0.01)
+    b3 ~ dnorm(0, 0.01)
+    b4 ~ dnorm(0, 0.01)
+    c0 ~ dnorm(0, 0.01)
+    c1 ~ dnorm(0, 0.01)
+    c2 ~ dnorm(0, 0.01)
   }
   
+  ## - Function to initialize priors
+  initjags <- function(){
+    return(list(a0 = runif(1, -5, 5),
+                a1 = runif(1, 0, 5),
+                b0 = runif(1, -5, 5),
+                b1 = runif(1, -5, 0),
+                b2 = runif(1, 2, 5),
+                b3 = runif(1, -5, 0),
+                b4 = runif(1, 0, 5),
+                c0 = runif(1, -5, 5),
+                c1 = runif(1, 2, 5),
+                c2 = runif(1, -5, 0)))
+  }
   
-  # Run model
-  out <- R2jags::jags(data = data_jags.in$data,
-                      param = param.in,
+  ## - Fit the model
+  out <- R2jags::jags(data = data_jags.in,
+                      param = names(initjags()),
                       inits = list(initjags(),
                                    initjags(),
                                    initjags()),
-                      model.file = textConnection(model),
+                      model.file = mortality_model,
                       n.chains = n.chains,
                       n.iter = n.iter,
                       n.burnin = n.burn,
@@ -149,146 +93,145 @@ fit_mortality <- function(data_jags.in, n.chains, n.iter, n.burn, n.thin, Dj_lat
 
 
 
-#' Fit the mortality model with a multinomial regression
-#' @param data_jags List contianing all the inputs of the model
+
+#' Fit the mortality model with disturbance event given in the data
+#' @param data_jags.in List containing all the inputs of the model
 #' @param n.chains numeric: Number of MCMC Markov chains
 #' @param n.iter numeric: Number of iterations
 #' @param n.burn numeric: Burn-in
 #' @param n.thin numeric: Thinning rate
-#' @param Dj_latent Boolean specifying if the variable Dj (occurence of a disturbance) comes from 
-#'                  the data or should be estimated
 #' @return A rjags object
-fit_mortality_multinom <- function(data_jags, n.chains, n.iter, n.burn, n.thin, Dj_latent){
-  
-  # Modify status in data to fit multinomial format
-  status = as.matrix(data.frame(h = as.numeric(unlist(data_jags$data$h)), 
-                                d = as.numeric(unlist(data_jags$data$d)),
-                                a = as.numeric(unlist(data_jags$data$a))))
-  data_jags.in <- data_jags
-  data_jags.in$data <- data_jags.in$data[-c(which(names(data_jags.in$data) %in% c("h", "d", "a")))]
-  data_jags.in$data$status <- status
+fit_mortality_D <- function(data_jags.in, n.chains, n.iter, n.burn, n.thin){
   
   ## - Write the model
-  
-  # Loop on all plots
-  model.plot.loops <- c("# Loop on all plots
-                        for(j in 1:Nplots){", 
-                        "
-                        }")
-  if(Dj_latent){
-    model.plot.loops[1] <- paste0(model.plot.loops[1], 
-                                  "
-                                  D[j] ~ dbern(pD[j])
-                                  logit(pD[j]) = a0 + a1*DA[j]
-                                  ")
-  }
-  
-  # Loop on all trees
-  model.trees.loop <- "
-  # Loop on trees
-    for(i in beg[j]:end[j]){
-      
-      status[i, 1:3] ~ dmulti(proba[i, 1:3], 1)
-
+  mortality_model_D <- function() {
+    for (i in 1:Ntrees) {
+      state[i] ~ dcat(proba[i, 1:3])
       # Probability to observe harvested tree
-      proba[i, 1] = (1 - D[j])*phadBM[i] + D[j]*pdDj[i]*phdD[i]
-      
+      proba[i, 1] = (1 - D[i])*phadBM[i] + D[i]*pdDj[i]*phdD[i]
       # Probability to observe dead tree
-      proba[i, 2] = (1 - D[j])*pdBM[i]*(1 - phadBM[i]) + D[j]*pdDj[i]*(1 - phdD[i])
-      
+      proba[i, 2] = (1 - D[i])*pdBM[i]*(1 - phadBM[i]) + D[i]*pdDj[i]*(1 - phdD[i])
       # Probability to observe alive tree
-      proba[i, 3] = (1 - D[j])*(1 - pdBM[i])*(1 - phadBM[i]) + D[j]*(1 - pdDj[i])
-      
-      
+      proba[i, 3] = (1 - D[i])*(1 - pdBM[i])*(1 - phadBM[i]) + D[i]*(1 - pdDj[i])
       # Probability to die in disturbed plots
       pdDj[i] = 1 - (1 - pdBM[i])*(1 - pdD[i])
-      
       # Probability to die from background mortality
-      logit(pdBM[i]) = b0 + b1*dbh[i] + b2*comp[i] + b3*sgdd[j] + b4*wai[j]
-      
+      logit(pdBM[i]) = b0 + b1*dbh[i] + b2*comp[i] + b3*sgdd[i] + b4*wai[i]
       # Probability to die from a disturbance
-      logit(pdD[i]) = c0 + c1*DS[j] + c2*dbh[i]*DS[j]
-      
-      # Probability to be harvested knowing that the tree is dead from a disturbance
-      logit(phdD[i]) = d0 + d1*dbh[i] + d2*DS[j] + d3*dbh[i]*DS[j]
-      
-      # Probability to be harvested in undisturbed plots
-      logit(phadBM[i]) = e0 + e1*dbh[i]
-      
-      
+      logit(pdD[i]) = c0 + c1*DS[i] + c2*dbh[i]*DS[i]
     }
-  "
-  
-  
-  # Priors
-  model.priors <- "
-  b0 ~ dnorm(0, 0.01)
-  b1 ~ dnorm(-1.5, 0.01)
-  b2 ~ dnorm(3, 0.01)
-  b3 ~ dnorm(-1.5, 0.01)
-  b4 ~ dnorm(1.5, 0.01)
-  c0 ~ dnorm(0, 0.01)
-  c1 ~ dnorm(3, 0.01)
-  c2 ~ dnorm(-1.5, 0.01)
-  "
-  if(Dj_latent){model.priors <- paste0("
-                                       a0 ~ dnorm(0, 0.01)
-                                       a1 ~ dnorm(1.5, 0.01)
-                                       ", model.priors)}
-  
-  # Full Model
-  model <- paste0("model{
-                  ", model.plot.loops[1], 
-                  model.trees.loop, model.plot.loops[2], 
-                  model.priors, "}")
-  
-  
-  ## - Function to initialize priors
-  if(Dj_latent){
-    initjags <- function(){
-      return(list(a0 = runif(1, -5, 5),
-                  a1 = runif(1, 0, 5),
-                  b0 = runif(1, -5, 5),
-                  b1 = runif(1, -5, 0),
-                  b2 = runif(1, 2, 5),
-                  b3 = runif(1, -5, 0),
-                  b4 = runif(1, 0, 5),
-                  c0 = runif(1, -5, 5),
-                  c1 = runif(1, 2, 5),
-                  c2 = runif(1, -5, 0)))
-    }
-    param.in <- c("a0", "a1", "b0", "b1", "b2", "b3", 
-                  "b4", "c0", "c1", "c2")
-  } else {
-    initjags <- function(){
-      return(list(b0 = runif(1, -5, 5),
-                  b1 = runif(1, -5, 0),
-                  b2 = runif(1, 2, 5),
-                  b3 = runif(1, -5, 0),
-                  b4 = runif(1, 0, 5),
-                  c0 = runif(1, -5, 5),
-                  c1 = runif(1, 2, 5),
-                  c2 = runif(1, -5, 0)))
-    }
-    param.in <- c("b0", "b1", "b2", "b3", 
-                  "b4", "c0", "c1", "c2")
+    
+    # Priors
+    b0 ~ dnorm(0, 0.01)
+    b1 ~ dnorm(0, 0.01)
+    b2 ~ dnorm(0, 0.01)
+    b3 ~ dnorm(0, 0.01)
+    b4 ~ dnorm(0, 0.01)
+    c0 ~ dnorm(0, 0.01)
+    c1 ~ dnorm(0, 0.01)
+    c2 ~ dnorm(0, 0.01)
   }
   
+  ## - Function to initialize priors
+  initjags_D <- function(){
+    return(list(
+      b0 = runif(1, -5, 5),
+      b1 = runif(1, -5, 0),
+      b2 = runif(1, 2, 5),
+      b3 = runif(1, -5, 0),
+      b4 = runif(1, 0, 5),
+      c0 = runif(1, -5, 5),
+      c1 = runif(1, 2, 5),
+      c2 = runif(1, -5, 0)))
+  }
   
-  # Run model
-  out <- R2jags::jags(data = data_jags.in$data,
-                      param = param.in,
-                      inits = list(initjags(),
-                                   initjags(),
-                                   initjags()),
-                      model.file = textConnection(model),
+  ## - Fit the model
+  out <- R2jags::jags(data = data_jags.in,
+                      param = names(initjags_D()),
+                      inits = list(initjags_D(),
+                                   initjags_D(),
+                                   initjags_D()),
+                      model.file = mortality_model_D,
                       n.chains = n.chains,
                       n.iter = n.iter,
                       n.burnin = n.burn,
                       n.thin = n.thin,
                       DIC = TRUE, 
-                      progress.bar = "gui")
-  
+                      progress.bar = "text")
   
   return(out)
+}
+
+
+#' Fit the mortality model with parameters (a0 and a1) for disturbance occurrence given
+#' @param data_jags.in List containing all the inputs of the model
+#' @param n.chains numeric: Number of MCMC Markov chains
+#' @param n.iter numeric: Number of iterations
+#' @param n.burn numeric: Burn-in
+#' @param n.thin numeric: Thinning rate
+#' @return A rjags object
+fit_mortality_a <- function(data_jags.in, n.chains, n.iter, n.burn, n.thin){
+  
+  ## - Write the mortality model 
+  mortality_model_a <- function() {
+    
+    # Loop over all plots
+    for (j in 1:Nplots) {
+      D[j] ~ dbern(pD[j])
+    }
+    
+    for (i in 1:Ntrees) {
+      state[i] ~ dcat(proba[i, 1:3])
+      # Probability to observe harvested tree
+      proba[i, 1] = (1 - D[plot[i]])*phadBM[i] + D[plot[i]]*pdDj[i]*phdD[i]
+      # Probability to observe dead tree
+      proba[i, 2] = (1 - D[plot[i]])*pdBM[i]*(1 - phadBM[i]) + D[plot[i]]*pdDj[i]*(1 - phdD[i])
+      # Probability to observe alive tree
+      proba[i, 3] = (1 - D[plot[i]])*(1 - pdBM[i])*(1 - phadBM[i]) + D[plot[i]]*(1 - pdDj[i])
+      # Probability to die in disturbed plots
+      pdDj[i] = 1 - (1 - pdBM[i])*(1 - pdD[i])
+      # Probability to die from background mortality
+      logit(pdBM[i]) = b0 + b1*dbh[i] + b2*comp[i] + b3*sgdd[i] + b4*wai[i]
+      # Probability to die from a disturbance
+      logit(pdD[i]) = c0 + c1*DS[i] + c2*dbh[i]*DS[i]
+    }
+    
+    # Priors
+    b0 ~ dnorm(0, 0.01)
+    b1 ~ dnorm(0, 0.01)
+    b2 ~ dnorm(0, 0.01)
+    b3 ~ dnorm(0, 0.01)
+    b4 ~ dnorm(0, 0.01)
+    c0 ~ dnorm(0, 0.01)
+    c1 ~ dnorm(0, 0.01)
+    c2 ~ dnorm(0, 0.01)
+  }
+  
+  ## - Function to initialize priors
+  initjags <- function(){
+    return(list(b0 = runif(1, -5, 5),
+                b1 = runif(1, -5, 0),
+                b2 = runif(1, 2, 5),
+                b3 = runif(1, -5, 0),
+                b4 = runif(1, 0, 5),
+                c0 = runif(1, -5, 5),
+                c1 = runif(1, 2, 5),
+                c2 = runif(1, -5, 0)))
+  }
+  
+  ## - Fit the model
+  out_a <- R2jags::jags(data = data_jags.in,
+                        param = names(initjags()),
+                        inits = list(initjags(),
+                                     initjags(),
+                                     initjags()),
+                        model.file = mortality_model_a,
+                        n.chains = n.chains,
+                        n.iter = n.iter,
+                        n.burnin = n.burn,
+                        n.thin = n.thin,
+                        DIC = TRUE, 
+                        progress.bar = "text")
+  
+  return(out_a)
 }

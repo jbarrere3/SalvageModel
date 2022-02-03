@@ -329,6 +329,28 @@ get_param_harvest_proba <- function(data_model_scaled){
 }
 
 
+
+#' Get parameters disturbance probabilities
+#' @param data_model_scaled
+get_param_disturbance_proba <- function(data_model_scaled){
+  
+  # Initialize output
+  out <- list()
+  
+  # Format data
+  data.in <- data_model_scaled %>%
+    dplyr::select(plotcode, D, DA = DA.Senf) %>%
+    distinct()
+  
+  # Fit model
+  mod <- glm(D ~ DA, data = data.in, family = binomial(link = "logit"))
+  # Get parameters e0 and e1 (cf. doc Multinomial harvest model)
+  out$a0 <- as.numeric(mod$coefficients[1])
+  out$a1 <- as.numeric(mod$coefficients[2])
+  
+  return(out)
+}
+
 #' Simulate tree status data for the jags model
 #' @param data.in dataframe containing plot and tree variable centered and scaled
 #' @param param_harvest_proba list containing the parameters for the harvest conditional proobabilities
@@ -413,6 +435,52 @@ generate_data_jags_from_simulated <- function(data_simulated, Dj_latent) {
   }
   data_jags
 }
+
+#' generate data for the jags model using real data
+#' @param data dataset where the tree status (dead, alive or harvested) is not simulated
+#' @param param_harvest_proba list containing the parameters for the harvest conditional proobabilities
+#' @author Björn Reineking, Julien Barrere
+generate_data_jags <- function(data, param_harvest_proba){
+  # Add harvest conditional probabilities
+  d0 = param_harvest_proba$d0
+  d1 = param_harvest_proba$d1
+  d2 = param_harvest_proba$d2
+  d3 = param_harvest_proba$d3
+  e0 = param_harvest_proba$e0
+  e1 = param_harvest_proba$e1
+  data.in <- data %>%
+    mutate(phdD = plogis(d0 + d1*dbh + d2*DS + d3*dbh*DS), 
+           phadBM = plogis(e0 + e1*dbh))
+  
+  # Separate data at the plot and tree level
+  plot_data <- data.in %>%
+    dplyr::select(plotcode, D, DA = DA.Senf, DS = DS.Senf) %>% distinct(plotcode, .keep_all = TRUE)
+  # Add variable "plot" from 1:n_plots, and sort plot data by this variable.
+  # This is important because we will use the variable "plot" of a given tree as row number to access 
+  # the corresponding plot data in jags
+  plot_data <- plot_data %>% mutate(plot = as.integer(as.factor(plotcode))) %>% arrange(plot)
+  # Tree data
+  data.in <- left_join(dplyr::select(data.in, -D, -DS), plot_data, by = "plotcode")
+  
+  # Create the output list
+  data_jags <- list(
+    Ntrees = NROW(data.in),
+    dbh = data.in$dbh,
+    comp = data.in$comp,
+    sgdd = data.in$sgdd,
+    wai = data.in$wai,
+    DS = data.in$DS.Senf,
+    phdD = data.in$phdD,
+    phadBM = data.in$phadBM,
+    state = apply(dplyr::select(data.in, h, d, a), 1, which.max), 
+    Nplots = NROW(plot_data), 
+    DA = plot_data$DA, 
+    plot = data.in$plot
+  )
+  
+  return(data_jags)
+}
+
 
 #' Add probability that a disturbance occurs to data_jags
 #' @param data_jags input data for the jags model (must have been generated with Dj_latent = TRUE)

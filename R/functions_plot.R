@@ -11,8 +11,6 @@
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-# Add comment to test branching. 
-
 #' Function to get the path of a file, and create directories if they don't exist
 #' @param file.in character: path of the file, filename included (ex: "plot/plot.png")
 create_dir_if_needed <- function(file.in){
@@ -159,5 +157,38 @@ compare_fitted_generated_probabilities <- function(data_jags, jags.model, data_m
   
   ## - save the plot
   ggsave(file.in, plot.in, width = 17, height = 12, units = "cm", dpi = 600)
+  return(file.in)
+}
+
+
+
+#' Plot parameters value for different species
+#' @param list.in list containing model outputs for different species 
+plot_parameters_species <- function(list.in, file.in){
+  
+  ## - Create directories if needed
+  create_dir_if_needed(file.in)
+  
+  ## - Make the plot
+  for(i in 1:length(list.in)){
+    data.out_i <- as.data.frame(list.in[[i]]$BUGSoutput$sims.matrix) %>%
+      dplyr::select(-deviance) %>%
+      gather(key = "parameter", value = "value") %>%
+      mutate(species = names(list.in)[i])
+    if(i == 1) data.out <- data.out_i
+    else data.out <- rbind.data.frame(data.out, data.out_i)
+  }
+  plot.out <- data.out %>%
+    ggplot(aes(x = value, fill = species)) + 
+    geom_density(aes(y = stat(density)), 
+                 colour = "black", alpha = 0.5) + 
+    facet_wrap(~ parameter, scales = "free") + 
+    geom_vline(xintercept = 0, linetype = "dashed") +
+    scale_fill_manual(values = c("#005F73", "#BB3E03", "#0A9396", "#EE9B00", "#9B2226")[c(1:length(list.in))]) +
+    xlab("Parameter value") +
+    theme_bw()
+  
+  ## - save the plot
+  ggsave(file.in, plot.out, width = 17, height = 12, units = "cm", dpi = 600)
   return(file.in)
 }

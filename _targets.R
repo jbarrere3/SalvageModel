@@ -79,11 +79,25 @@ list(
   
   # Generate input data for jags with real data 
   tar_target(param_disturbance_proba, get_param_disturbance_proba(data_model_scaled)), 
+  # -- With silver fir
   tar_target(data_jags_A.alba, generate_data_jags(subset(data_model_scaled, species == "Abies alba"),
                                                   param_harvest_proba)), 
   tar_target(data_jags_A.alba_a, add_pD_to_data_jags(data_jags_A.alba, 
                                                      a0 = param_disturbance_proba$a0, 
                                                      a1 = param_disturbance_proba$a1)),
+  # -- With hornbeam
+  tar_target(data_jags_C.betulus, generate_data_jags(subset(data_model_scaled, species == "Carpinus betulus"),
+                                                  param_harvest_proba)), 
+  tar_target(data_jags_C.betulus_a, add_pD_to_data_jags(data_jags_C.betulus, 
+                                                     a0 = param_disturbance_proba$a0, 
+                                                     a1 = param_disturbance_proba$a1)),
+  # -- With oak
+  tar_target(data_jags_Q.robur, generate_data_jags(subset(data_model_scaled, species == "Quercus robur"),
+                                                     param_harvest_proba)), 
+  tar_target(data_jags_Q.robur_a, add_pD_to_data_jags(data_jags_Q.robur, 
+                                                        a0 = param_disturbance_proba$a0, 
+                                                        a1 = param_disturbance_proba$a1)),
+  
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # - Step 3 - Fit the jags model
@@ -96,36 +110,51 @@ list(
   tar_target(jags.model_a, fit_mortality_a(data_jags_simulated_a, n.chains = 3, n.iter = 5000, 
                                            n.burn = 1000, n.thin = 1)),
   tar_target(jags.model_A.alba_a, fit_mortality_a(data_jags_A.alba_a, n.chains = 3, 
-                                                  n.iter = 5000, n.burn = 1000, n.thin = 1)), 
+                                                  n.iter = 5000, n.burn = 1000, n.thin = 1)),
+  tar_target(jags.model_C.betulus_a, fit_mortality_a(data_jags_C.betulus_a, n.chains = 3, 
+                                                  n.iter = 5000, n.burn = 1000, n.thin = 1)),
+  tar_target(jags.model_Q.robur_a, fit_mortality_a(data_jags_Q.robur_a, n.chains = 3, 
+                                                     n.iter = 5000, n.burn = 1000, n.thin = 1)),
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # - Step 4 - Plot the outputs of the model
   
   # Convergence
   tar_target(fig_jags.model_chains, 
-             plot_convergence(jags.model, file.in = "fig/model_diagnostic/fig_convergence.png"), 
+             plot_convergence(jags.model, file.in = "fig/simulated_data/fig_convergence.png"), 
              format = "file"), 
   tar_target(fig_jags.model_chains_D, 
-             plot_convergence(jags.model_D, file.in = "fig/model_diagnostic/fig_convergence_D.png"), 
+             plot_convergence(jags.model_D, file.in = "fig/simulated_data/fig_convergence_D.png"), 
              format = "file"), 
   tar_target(fig_jags.model_chains_a, 
-             plot_convergence(jags.model_a, file.in = "fig/model_diagnostic/fig_convergence_a.png"), 
+             plot_convergence(jags.model_a, file.in = "fig/simulated_data/fig_convergence_a.png"), 
              format = "file"), 
   tar_target(fig_jags.model_A.alba_chains_a, 
-             plot_convergence(jags.model_A.alba_a, file.in = "fig/real_outputs/fig_convergence_Aalba_a.png"), 
+             plot_convergence(jags.model_A.alba_a, file.in = "fig/real_data/fig_convergence_Aalba_a.png"), 
+             format = "file"), 
+  tar_target(fig_jags.model_C.betulus_chains_a, 
+             plot_convergence(jags.model_C.betulus_a, file.in = "fig/real_data/fig_convergence_Cbetulus_a.png"), 
+             format = "file"), 
+  tar_target(fig_jags.model_Q.robur_chains_a, 
+             plot_convergence(jags.model_Q.robur_a, file.in = "fig/real_data/fig_convergence_Qrobur_a.png"), 
              format = "file"), 
   
   # Parameters value
   tar_target(fig_fitted_vs_true, 
              plot_fitted_vs_true_parameters(list(param = list(a0 = 0, a1 = 3, b0 = 0, b1 = -3, b2 = 3, 
                                                               b3 = -3, b4 = 3, c0 = 0, c1 = 3, c2 = -3)), 
-                                            jags.model, "fig/model_diagnostic/fitted_vs_true.png")), 
+                                            jags.model, "fig/simulated_data/fitted_vs_true.png")), 
   tar_target(fig_fitted_vs_true_D, 
              plot_fitted_vs_true_parameters(list(param = list(b0 = 0, b1 = -3, b2 = 3, b3 = -3, 
                                                               b4 = 3, c0 = 0, c1 = 3, c2 = -3)), 
-                                            jags.model_D, "fig/model_diagnostic/fitted_vs_true_D.png")), 
+                                            jags.model_D, "fig/simulated_data/fitted_vs_true_D.png")), 
   tar_target(fig_fitted_vs_true_a, 
              plot_fitted_vs_true_parameters(list(param = list(b0 = 0, b1 = -3, b2 = 3, b3 = -3, 
                                                               b4 = 3, c0 = 0, c1 = 3, c2 = -3)), 
-                                            jags.model_a, "fig/model_diagnostic/fitted_vs_true_a.png"))
+                                            jags.model_a, "fig/simulated_data/fitted_vs_true_a.png")), 
+  tar_target(fig_param_species, 
+             plot_parameters_species(list.in = list(A.alba = jags.model_A.alba_a, 
+                                                    C.betulus = jags.model_C.betulus_a, 
+                                                    Q.robur = jags.model_Q.robur_a), 
+                                     file.in = "fig/real_data/param_per_species.png"))
 )

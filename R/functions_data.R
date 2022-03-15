@@ -388,7 +388,7 @@ simulate_status <- function(data.in, param_harvest_proba, Dj_latent,
            pd = (1 - D)*pdBM*(1 - phadBM) + D*pdDj*(1 - phdD),
            pa = 1 - (ph + pd))
   
-  # Multinomial realisation of tree state - we have to call rmultinom for each tree separately
+  # Multinational realization of tree state - we have to call rmultinom for each tree separately
   hda <- t(apply(tree_data[, c("ph", "pd", "pa")], 1, function(x) rmultinom(n = 1, size = 1, prob = x)))
   colnames(hda) <- c("h", "d", "a")
   tree_data <- cbind(dplyr::select(tree_data, -h, -d, -a), hda)
@@ -422,7 +422,7 @@ generate_data_jags_from_simulated <- function(data_simulated, Dj_latent) {
     wai = data_simulated$wai,
     DS = data_simulated$DS.Senf,
     phdD = data_simulated$phdD,
-    phadBM = data_simulated$phdD,
+    phadBM = data_simulated$phadBM,
     state = apply(dplyr::select(data_simulated, h, d, a), 1, which.max)
   )
   
@@ -491,4 +491,38 @@ add_pD_to_data_jags <- function(data_jags, a0, a1){
   out$pD <- plogis(a0 + a1*out$DA)
   out <- out[-which(names(out) == "DA")]
   return(out)
+}
+
+
+#' generate data for the jags model using real data where disturbance occurrence and severity is given
+#' @param data dataset where the tree status (dead, alive or harvested) is not simulated
+#' @param param_harvest_proba list containing the parameters for the harvest conditional proobabilities
+#' @author Björn Reineking, Julien Barrere
+generate_data_jags_D <- function(data, param_harvest_proba){
+  # Add harvest conditional probabilities
+  d0 = param_harvest_proba$d0
+  d1 = param_harvest_proba$d1
+  d2 = param_harvest_proba$d2
+  d3 = param_harvest_proba$d3
+  e0 = param_harvest_proba$e0
+  e1 = param_harvest_proba$e1
+  data.in <- data %>%
+    mutate(phdD = plogis(d0 + d1*dbh + d2*DS + d3*dbh*DS), 
+           phadBM = plogis(e0 + e1*dbh))
+  
+  # Create the output list
+  data_jags <- list(
+    Ntrees = NROW(data.in),
+    dbh = data.in$dbh,
+    comp = data.in$comp,
+    sgdd = data.in$sgdd,
+    wai = data.in$wai,
+    DS = data.in$DS.Senf,
+    phdD = data.in$phdD,
+    phadBM = data.in$phadBM,
+    state = apply(dplyr::select(data.in, h, d, a), 1, which.max), 
+    D = data.in$D
+  )
+  
+  return(data_jags)
 }

@@ -192,3 +192,69 @@ plot_parameters_species <- function(list.in, file.in){
   ggsave(file.in, plot.out, width = 17, height = 12, units = "cm", dpi = 600)
   return(file.in)
 }
+
+
+
+#' Plot harvest probability depending on dbh, disturbance and land property
+#' @param data_model_scaled Input data for the model centered and scaled
+#' @param data_model Input data for the model
+#' @param file.in Path and file where to save the plot
+plot_harvest_probability <- function(data_model, data_model_scaled, file.in){
+  
+  ## - Create directories if needed
+  create_dir_if_needed(file.in)
+  
+  ## - make the plot
+  # Get property data
+  data_property <- fread("data/FrenchNFI_property.csv") %>%
+    mutate(property = case_when(propriete %in% c(1:2) ~ "public", 
+                                propriete == 3 ~ "private")) %>%
+    dplyr::select(plotcode = idp, property) %>%
+    filter(plotcode %in% data_model_scaled$plotcode)
+  # Format data
+  data_priorharvest <- data_model_scaled %>%
+    dplyr::select(plotcode, dbh, a, h, D, DS) %>%
+    filter(!(a == 1 & D == 1)) %>% # Remove alive trees in disturbed plots
+    dplyr::select(-a) %>%
+    left_join(data_property, by = "plotcode")
+  # Fit model for undisturbed plots
+  mod.undist <- glm(h ~ dbh+property, 
+                    data = subset(data_priorharvest, D == 0), 
+                    family = binomial(link = "logit"))
+  # Fit model for disturbed plots
+  mod.dist <- glm(h ~ DS*property + dbh, 
+                  data = subset(data_priorharvest, D == 1), 
+                  family = binomial(link = "logit"))
+  # Predict harvest probability
+  fit <- data_model_scaled %>% 
+    dplyr::select(treecode, plotcode, dbh, DS) %>%
+    left_join(data_property, by = "plotcode")
+  fit$undisturbed <- predict(mod.undist, newdata = fit, type = "response")
+  fit$disturbed <- predict(mod.dist, newdata = fit, type = "response")
+  fit <- fit %>%
+    dplyr::select(-dbh, -DS) %>%
+    left_join((data_model %>% dplyr::select(treecode, dbh, DS, D)), 
+              by = "treecode") %>%
+    gather(key = disturbance, value = harvest, undisturbed, disturbed) %>%
+    filter(!(disturbance == "undisturbed" & D == 1)) %>%
+    filter(!(disturbance == "disturbed" & D == 0)) 
+  # Plot the fit
+  plot.out <- fit %>%
+    mutate(status = case_when(disturbance == "undisturbed" ~ "all trees in undisturbed plots", 
+                              TRUE ~ "dead trees in disturbed plots")) %>% 
+    ggplot(aes(x = dbh, y = harvest, group = interaction(DS, property), 
+               linetype = property, colour = DS)) + 
+    geom_line(size = 1) + 
+    scale_color_gradient(low = "black", high = "red") + 
+    facet_wrap(~ status) + 
+    theme_bw() + 
+    ylab("harvest probability") +
+    xlab("DBH (mm)") +
+    xlim(0, 1000)
+  
+  
+  ## - save the plot
+  ggsave(file.in, plot.out, width = 17, height = 8, units = "cm", dpi = 600)
+  return(file.in)
+  
+}

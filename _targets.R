@@ -85,6 +85,9 @@ list(
   tar_target(data_jags_A.alba_a, add_pD_to_data_jags(data_jags_A.alba, 
                                                      a0 = param_disturbance_proba$a0, 
                                                      a1 = param_disturbance_proba$a1)),
+  tar_target(data_jags_A.alba_D, generate_data_jags_D(subset(data_model_scaled, species == "Abies alba"),
+                                                  param_harvest_proba)), 
+  
   # -- With hornbeam
   tar_target(data_jags_C.betulus, generate_data_jags(subset(data_model_scaled, species == "Carpinus betulus"),
                                                   param_harvest_proba)), 
@@ -97,6 +100,13 @@ list(
   tar_target(data_jags_Q.robur_a, add_pD_to_data_jags(data_jags_Q.robur, 
                                                         a0 = param_disturbance_proba$a0, 
                                                         a1 = param_disturbance_proba$a1)),
+  # -- With spruce
+  tar_target(data_jags_P.abies, generate_data_jags(subset(data_model_scaled, 
+                                                          (species == "Picea abies") & (comp < 7)),
+                                                   param_harvest_proba)), 
+  tar_target(data_jags_P.abies_a, add_pD_to_data_jags(data_jags_P.abies, 
+                                                      a0 = param_disturbance_proba$a0, 
+                                                      a1 = param_disturbance_proba$a1)),
   
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -111,10 +121,14 @@ list(
                                            n.burn = 1000, n.thin = 1)),
   tar_target(jags.model_A.alba_a, fit_mortality_a(data_jags_A.alba_a, n.chains = 3, 
                                                   n.iter = 5000, n.burn = 1000, n.thin = 1)),
+  tar_target(jags.model_A.alba_D, fit_mortality_D(data_jags_A.alba_D, n.chains = 3, 
+                                                  n.iter = 5000, n.burn = 1000, n.thin = 1)),
   tar_target(jags.model_C.betulus_a, fit_mortality_a(data_jags_C.betulus_a, n.chains = 3, 
                                                   n.iter = 5000, n.burn = 1000, n.thin = 1)),
   tar_target(jags.model_Q.robur_a, fit_mortality_a(data_jags_Q.robur_a, n.chains = 3, 
                                                      n.iter = 5000, n.burn = 1000, n.thin = 1)),
+  tar_target(jags.model_P.abies_a, fit_mortality_a(data_jags_P.abies_a, n.chains = 3, 
+                                                   n.iter = 5000, n.burn = 1000, n.thin = 1)),
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # - Step 4 - Plot the outputs of the model
@@ -132,11 +146,17 @@ list(
   tar_target(fig_jags.model_A.alba_chains_a, 
              plot_convergence(jags.model_A.alba_a, file.in = "fig/real_data/fig_convergence_Aalba_a.png"), 
              format = "file"), 
+  tar_target(fig_jags.model_A.alba_chains_D, 
+             plot_convergence(jags.model_A.alba_D, file.in = "fig/real_data/fig_convergence_Aalba_D.png"), 
+             format = "file"), 
   tar_target(fig_jags.model_C.betulus_chains_a, 
              plot_convergence(jags.model_C.betulus_a, file.in = "fig/real_data/fig_convergence_Cbetulus_a.png"), 
              format = "file"), 
   tar_target(fig_jags.model_Q.robur_chains_a, 
              plot_convergence(jags.model_Q.robur_a, file.in = "fig/real_data/fig_convergence_Qrobur_a.png"), 
+             format = "file"), 
+  tar_target(fig_jags.model_P.abies_chains_a, 
+             plot_convergence(jags.model_P.abies_a, file.in = "fig/real_data/fig_convergence_P.abies_a.png"), 
              format = "file"), 
   
   # Parameters value
@@ -155,6 +175,11 @@ list(
   tar_target(fig_param_species, 
              plot_parameters_species(list.in = list(A.alba = jags.model_A.alba_a, 
                                                     C.betulus = jags.model_C.betulus_a, 
-                                                    Q.robur = jags.model_Q.robur_a), 
-                                     file.in = "fig/real_data/param_per_species.png"))
+                                                    Q.robur = jags.model_Q.robur_a, 
+                                                    P.abies = jags.model_P.abies_a), 
+                                     file.in = "fig/real_data/param_per_species.png")),
+  
+  # Exploratory plots
+  tar_target(fig_harvest_proba, plot_harvest_probability(data_model, data_model_scaled, 
+                                                         "fig/exploratory/harvest_proba.png"))
 )

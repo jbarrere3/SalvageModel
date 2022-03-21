@@ -148,9 +148,6 @@ fit_mortality_D <- function(data_jags.in, n.chains, n.iter, n.burn, n.thin){
   ## - Fit the model
   out <- R2jags::jags(data = data_jags.in,
                       param = names(initjags_D()),
-                      inits = list(initjags_D(),
-                                   initjags_D(),
-                                   initjags_D()),
                       model.file = mortality_model_D,
                       n.chains = n.chains,
                       n.iter = n.iter,

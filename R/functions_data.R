@@ -284,10 +284,11 @@ format_data_model <- function(FUNDIV_tree, FUNDIV_plot, Disturbance, Climate){
 scale_data_model <- function(data_model, 
                              var = c("dbh", "comp", "sgdd", "wai", "DA.Senf", "DS.Senf", "DS")){
   id_var <- which(colnames(data_model) %in% var) 
-  out <- data_model
+  out <- data_model %>% mutate(DS = ifelse(DS == 0, NA_real_, DS))
   unscaled = as.matrix(out[, id_var])
   scaled = scale(unscaled)
   out[, id_var] <- as.data.frame(scaled)
+  out$DS[which(is.na(out$DS))] <- -99
   colnames(out) <- colnames(data_model)
   return(out)
 }
@@ -295,16 +296,21 @@ scale_data_model <- function(data_model,
 
 #' Get parameters harvest probabilities
 #' @param data_model_scaled
-get_param_harvest_proba <- function(data_model_scaled){
+#' @param Dj_latent
+get_param_harvest_proba <- function(data_model_scaled, Dj_latent){
   
   # Initialize output
   out <- list()
   
   # Format data
   data_priorharvest <- data_model_scaled %>%
-    dplyr::select(plotcode, dbh, a, h, D, DS) %>%
+    dplyr::select(plotcode, dbh, a, h, D, DS, DS.Senf) %>%
     filter(!(a == 1 & D == 1)) %>% # Remove alive trees in disturbed plots
     dplyr::select(-a)
+  
+  # Use the right DS depending on Dj_latent
+  if(Dj_latent) data_priorharvest <- data_priorharvest %>% dplyr::select(plotcode, dbh, h, D, DS = DS.Senf)
+  else data_priorharvest <- data_priorharvest %>% dplyr::select(plotcode, dbh, h, D, DS)
   
   # Fit model for undisturbed plots
   mod.undist <- glm(h ~ dbh, 
@@ -363,12 +369,16 @@ simulate_status <- function(data.in, param_harvest_proba, Dj_latent,
                                        b3 = -3, b4 = 3, c0 = 0, c1 = 3, c2 = -3)) {
   
   # Add simulated disturbance events
-  plot_data <- data.in %>%
-    dplyr::select(plotcode, DA = DA.Senf, DS = DS.Senf, D) %>% distinct(plotcode, .keep_all = TRUE) 
+   
   if(Dj_latent) {
-    plot_data <- plot_data %>% mutate(D = rbinom(NROW(plot_data), size = 1, prob = plogis(par$a0 + par$a1 * DA)))
-  }
-  tree_data <- left_join(dplyr::select(data.in, -D, -DS), plot_data, by = "plotcode")
+    plot_data <- data.in %>%
+      dplyr::select(plotcode, DA = DA.Senf, DS = DS.Senf) %>% 
+      distinct(plotcode, .keep_all = TRUE) %>%
+      mutate(D = rbinom(NROW(.), size = 1, prob = plogis(par$a0 + par$a1 * DA))) %>%
+      dplyr::select(-DA)
+    tree_data <- left_join(dplyr::select(data.in, -D, -DS), plot_data, by = "plotcode")
+  } else {tree_data <- data.in}
+  
   
   d0 = param_harvest_proba$d0
   d1 = param_harvest_proba$d1
@@ -420,7 +430,7 @@ generate_data_jags_from_simulated <- function(data_simulated, Dj_latent) {
     comp = data_simulated$comp,
     sgdd = data_simulated$sgdd,
     wai = data_simulated$wai,
-    DS = data_simulated$DS.Senf,
+    DS = data_simulated$DS,
     phdD = data_simulated$phdD,
     phadBM = data_simulated$phadBM,
     state = apply(dplyr::select(data_simulated, h, d, a), 1, which.max)

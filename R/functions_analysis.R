@@ -127,9 +127,9 @@ fit_mortality_D <- function(data_jags.in, n.chains, n.iter, n.burn, n.thin){
     b2 ~ dnorm(0, 0.01)
     b3 ~ dnorm(0, 0.01)
     b4 ~ dnorm(0, 0.01)
-    c0 ~ dnorm(0, 0.01)
-    c1 ~ dnorm(0, 0.01)
-    c2 ~ dnorm(0, 0.01)
+    c0 ~ dnorm(0, 1)
+    c1 ~ dnorm(0, 1)
+    c2 ~ dnorm(0, 1)
   }
   
   ## - Function to initialize priors

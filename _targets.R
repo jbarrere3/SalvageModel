@@ -60,6 +60,7 @@ list(
   # Keep and scale variables relevant to the model
   tar_target(data_model, format_data_model(FUNDIV_tree_FR, FUNDIV_plot_FR, Disturbance, Climate)), 
   tar_target(data_model_scaled, scale_data_model(data_model)), 
+  tar_target(data_model_scaled_BM_D, data_model_scaled %>% mutate(dbh = dbh - min(dbh) + 0.01)), 
   
   # Get parameters for harvest conditional probabilities
   tar_target(param_harvest_proba, get_param_harvest_proba(data_model_scaled, Dj_latent = FALSE)),
@@ -75,6 +76,14 @@ list(
   tar_target(data_simulated_D, simulate_status(subset(data_model_scaled, species == "Abies alba"), 
                                              param_harvest_proba, Dj_latent = FALSE)),
   tar_target(data_jags_simulated_D, generate_data_jags_from_simulated(data_simulated_D, Dj_latent = FALSE)),
+  
+  # Generate input data for the model with disturbance given for new BM functions
+  tar_target(data_simulated_BM1_D, simulate_status_BM1_D(subset(data_model_scaled_BM_D, species == "Abies alba"), 
+                                               param_harvest_proba, Dj_latent = FALSE)),
+  tar_target(data_jags_simulated_BM1_D, generate_data_jags_from_simulated(data_simulated_BM1_D, Dj_latent = FALSE)),
+  tar_target(data_simulated_BM2_D, simulate_status_BM2_D(subset(data_model_scaled_BM_D, species == "Abies alba"), 
+                                                         param_harvest_proba, Dj_latent = FALSE)),
+  tar_target(data_jags_simulated_BM2_D, generate_data_jags_from_simulated(data_simulated_BM2_D, Dj_latent = FALSE)),
   
   # Generate input data for jags with real data 
   tar_target(param_disturbance_proba, get_param_disturbance_proba(data_model_scaled)), 
@@ -121,6 +130,10 @@ list(
   # Fit jags models
   tar_target(jags.model_D, fit_mortality_D(data_jags_simulated_D, n.chains = 3, n.iter = 5000, 
                                        n.burn = 1000, n.thin = 1)),
+  tar_target(jags.model_BM1_D, fit_mortality_BM1_D(data_jags_simulated_BM1_D, n.chains = 3, n.iter = 5000, 
+                                           n.burn = 1000, n.thin = 1)),
+  tar_target(jags.model_BM2_D, fit_mortality_BM2_D(data_jags_simulated_BM2_D, n.chains = 3, n.iter = 5000, 
+                                                   n.burn = 1000, n.thin = 1)),
   tar_target(jags.model_a, fit_mortality_a(data_jags_simulated_a, n.chains = 3, n.iter = 5000, 
                                            n.burn = 1000, n.thin = 1)),
   tar_target(jags.model_A.alba_a, fit_mortality_a(data_jags_A.alba_a, n.chains = 3, 
@@ -146,6 +159,12 @@ list(
   # Convergence
   tar_target(fig_jags.model_chains_D, 
              plot_convergence(jags.model_D, file.in = "fig/simulated_data/fig_convergence_D.png"), 
+             format = "file"), 
+  tar_target(fig_jags.model_chains_BM1_D, 
+             plot_convergence(jags.model_BM1_D, file.in = "fig/simulated_data/fig_convergence_BM1_D.png"), 
+             format = "file"), 
+  tar_target(fig_jags.model_chains_BM2_D, 
+             plot_convergence(jags.model_BM2_D, file.in = "fig/simulated_data/fig_convergence_BM2_D.png"), 
              format = "file"), 
   tar_target(fig_jags.model_chains_a, 
              plot_convergence(jags.model_a, file.in = "fig/simulated_data/fig_convergence_a.png"), 
@@ -180,6 +199,17 @@ list(
              plot_fitted_vs_true_parameters(list(param = list(b0 = 0, b1 = -3, b2 = 3, b3 = -3, 
                                                               b4 = 3, c0 = 0, c1 = 3, c2 = -3)), 
                                             jags.model_D, "fig/simulated_data/fitted_vs_true_D.png"), 
+             format = "file"), 
+  tar_target(fig_fitted_vs_true_BM1_D, 
+             plot_fitted_vs_true_parameters(list(param = list(b0 = 0, b1 = -2, b2 = 1, b3 = 1.5, 
+                                                              b4 = 3, b5 = -1, c0 = 0, c1 = 3, c2 = -3)), 
+                                            jags.model_BM1_D, "fig/simulated_data/fitted_vs_true_BM1_D.png"), 
+             format = "file"), 
+  tar_target(fig_fitted_vs_true_BM2_D, 
+             plot_fitted_vs_true_parameters(list(param = list(b0 = 0, b1 = -2, b2 = 1, b3 = 1.5, b4 = 3, 
+                                                              b5 = -1, b6 = 2, b7 = 0.5, c0 = 0, c1 = 3, 
+                                                              c2 = -3)), 
+                                            jags.model_BM2_D, "fig/simulated_data/fitted_vs_true_BM2_D.png"), 
              format = "file"), 
   tar_target(fig_fitted_vs_true_a, 
              plot_fitted_vs_true_parameters(list(param = list(b0 = 0, b1 = -3, b2 = 3, b3 = -3, 

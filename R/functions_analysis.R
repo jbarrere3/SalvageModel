@@ -232,3 +232,125 @@ fit_mortality_a <- function(data_jags.in, n.chains, n.iter, n.burn, n.thin){
   
   return(out_a)
 }
+
+
+
+#' Fit the mortality model with disturbance event given in the data
+#' @param data_jags.in List containing all the inputs of the model
+#' @param n.chains numeric: Number of MCMC Markov chains
+#' @param n.iter numeric: Number of iterations
+#' @param n.burn numeric: Burn-in
+#' @param n.thin numeric: Thinning rate
+#' @return A rjags object
+fit_mortality_BM1_D <- function(data_jags.in, n.chains, n.iter, n.burn, n.thin){
+  
+  ## - Write the model
+  mortality_model_D <- function() {
+    for (i in 1:Ntrees) {
+      state[i] ~ dcat(proba[i, 1:3])
+      # Probability to observe harvested tree
+      proba[i, 1] = (1 - D[i])*phadBM[i] + D[i]*pdDj[i]*phdD[i]
+      # Probability to observe dead tree
+      proba[i, 2] = (1 - D[i])*pdBM[i]*(1 - phadBM[i]) + D[i]*pdDj[i]*(1 - phdD[i])
+      # Probability to observe alive tree
+      proba[i, 3] = (1 - D[i])*(1 - pdBM[i])*(1 - phadBM[i]) + D[i]*(1 - pdDj[i])
+      # Probability to die in disturbed plots
+      pdDj[i] = 1 - (1 - pdBM[i])*(1 - pdD[i])
+      # Probability to die from background mortality
+      logit(mu1[i]) = b0 + b1*dbh[i] + b2*log(dbh[i]) + b3*comp[i] + b4*(1/sgdd[i]) + b5*(1/wai[i])
+      pdBM[i] = 1 - (1 - mu1[i])^5
+      # Probability to die from a disturbance
+      logit(mu2[i]) = c0 + c1*DS[i] + c2*dbh[i]*DS[i]
+      pdD[i] = 1 - (1 - mu2[i])^5
+    }
+    
+    # Priors
+    b0 ~ dnorm(0, 0.5)
+    b1 ~ dnorm(0, 0.5)
+    b2 ~ dnorm(0, 0.5)
+    b3 ~ dnorm(0, 0.5)
+    b4 ~ dnorm(0, 0.5)
+    b5 ~ dnorm(0, 0.5)
+    c0 ~ dnorm(0, 0.5)
+    c1 ~ dnorm(0, 0.5)
+    c2 ~ dnorm(0, 0.5)
+  }
+  
+  
+  
+  ## - Fit the model
+  out <- R2jags::jags(data = data_jags.in,
+                      param = c(paste0("b", c(0:5)), paste0("c", c(0:2))),
+                      model.file = mortality_model_D,
+                      n.chains = n.chains,
+                      n.iter = n.iter,
+                      n.burnin = n.burn,
+                      n.thin = n.thin,
+                      DIC = TRUE, 
+                      progress.bar = "text")
+  
+  return(out)
+}
+
+
+#' Fit the mortality model with disturbance event given in the data
+#' @param data_jags.in List containing all the inputs of the model
+#' @param n.chains numeric: Number of MCMC Markov chains
+#' @param n.iter numeric: Number of iterations
+#' @param n.burn numeric: Burn-in
+#' @param n.thin numeric: Thinning rate
+#' @return A rjags object
+fit_mortality_BM2_D <- function(data_jags.in, n.chains, n.iter, n.burn, n.thin){
+  
+  ## - Write the model
+  mortality_model_D <- function() {
+    for (i in 1:Ntrees) {
+      state[i] ~ dcat(proba[i, 1:3])
+      # Probability to observe harvested tree
+      proba[i, 1] = (1 - D[i])*phadBM[i] + D[i]*pdDj[i]*phdD[i]
+      # Probability to observe dead tree
+      proba[i, 2] = (1 - D[i])*pdBM[i]*(1 - phadBM[i]) + D[i]*pdDj[i]*(1 - phdD[i])
+      # Probability to observe alive tree
+      proba[i, 3] = (1 - D[i])*(1 - pdBM[i])*(1 - phadBM[i]) + D[i]*(1 - pdDj[i])
+      # Probability to die in disturbed plots
+      pdDj[i] = 1 - (1 - pdBM[i])*(1 - pdD[i])
+      # Probability to die from background mortality
+      logit(mu1[i]) = b0 + b1*dbh[i] + b2*log(dbh[i]) + b3*comp[i] + b4*sgdd[i] + 
+        b5*sgdd[i]^2 + b6*wai[i] + b7*wai[i]^2
+      pdBM[i] = 1 - (1 - mu1[i])^5
+      # Probability to die from a disturbance
+      logit(mu2[i]) = c0 + c1*DS[i] + c2*dbh[i]*DS[i]
+      pdD[i] = 1 - (1 - mu2[i])^5
+    }
+    
+    # Priors
+    b0 ~ dnorm(0, 0.5)
+    b1 ~ dnorm(0, 0.5)
+    b2 ~ dnorm(0, 0.5)
+    b3 ~ dnorm(0, 0.5)
+    b4 ~ dnorm(0, 0.5)
+    b5 ~ dnorm(0, 0.5)
+    b6 ~ dnorm(0, 0.5)
+    b7 ~ dnorm(0, 0.5)
+    c0 ~ dnorm(0, 0.5)
+    c1 ~ dnorm(0, 0.5)
+    c2 ~ dnorm(0, 0.5)
+    
+  }
+  
+  
+  
+  ## - Fit the model
+  out <- R2jags::jags(data = data_jags.in,
+                      param = c(paste0("b", c(0:7)), paste0("c", c(0:2))),
+                      model.file = mortality_model_D,
+                      n.chains = n.chains,
+                      n.iter = n.iter,
+                      n.burnin = n.burn,
+                      n.thin = n.thin,
+                      DIC = TRUE, 
+                      progress.bar = "text")
+  
+  return(out)
+}
+

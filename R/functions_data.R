@@ -406,6 +406,115 @@ simulate_status <- function(data.in, param_harvest_proba, Dj_latent,
 }
 
 
+
+#' Simulate tree status data for the jags model
+#' @param data.in dataframe containing plot and tree variable centered and scaled
+#' @param param_harvest_proba list containing the parameters for the harvest conditional proobabilities
+#' @param Dj_latent Boolean specifying if the variable Dj (occurence of a disturbance) comes from 
+#'                  the data or should be estimated
+#' @param par list containing the parameters value used to simulate the data
+#' @author Björn Reineking, Julien Barrere
+simulate_status_BM1_D <- function(data.in, param_harvest_proba, Dj_latent, 
+                                  par = list(a0 = 0, a1 = 3, b0 = 0, b1 = -2, b2 = 1, b3 = 1.5, 
+                                             b4 = 3, b5 = -1, c0 = 0, c1 = 3, c2 = -3)) {
+  
+  # Add simulated disturbance events
+  
+  if(Dj_latent) {
+    plot_data <- data.in %>%
+      dplyr::select(plotcode, DA = DA.Senf, DS = DS.Senf) %>% 
+      distinct(plotcode, .keep_all = TRUE) %>%
+      mutate(D = rbinom(NROW(.), size = 1, prob = plogis(par$a0 + par$a1 * DA))) %>%
+      dplyr::select(-DA)
+    tree_data <- left_join(dplyr::select(data.in, -D, -DS), plot_data, by = "plotcode")
+  } else {tree_data <- data.in}
+  
+  
+  d0 = param_harvest_proba$d0
+  d1 = param_harvest_proba$d1
+  d2 = param_harvest_proba$d2
+  d3 = param_harvest_proba$d3
+  e0 = param_harvest_proba$e0
+  e1 = param_harvest_proba$e1
+  
+  # Compute probabilities based on parameters and data
+  tree_data <- tree_data %>%
+    mutate(mu1 = plogis(par$b0 + par$b1*dbh + par$b2*log(dbh) + par$b3*comp + 
+                          par$b4*(1/sgdd) + par$b5*(1/wai)), 
+           pdBM = 1 - (1 - mu1)^5,
+           mu2 = plogis(par$c0 + par$c1*DS + par$c2*DS*dbh), 
+           pdD = 1 - (1 - mu2)^5,
+           phdD = plogis(d0 + d1*dbh + d2*DS + d3*dbh*DS), 
+           phadBM = plogis(e0 + e1*dbh),
+           pdDj = 1 - (1 - pdD)*(1 - pdBM),
+           ph = (1 - D)*phadBM + D*pdDj*phdD, 
+           pd = (1 - D)*pdBM*(1 - phadBM) + D*pdDj*(1 - phdD),
+           pa = 1 - (ph + pd))
+  
+  # Multinational realization of tree state - we have to call rmultinom for each tree separately
+  hda <- t(apply(tree_data[, c("ph", "pd", "pa")], 1, function(x) rmultinom(n = 1, size = 1, prob = x)))
+  colnames(hda) <- c("h", "d", "a")
+  tree_data <- cbind(dplyr::select(tree_data, -h, -d, -a), hda)
+  tree_data
+}
+
+
+#' Simulate tree status data for the jags model
+#' @param data.in dataframe containing plot and tree variable centered and scaled
+#' @param param_harvest_proba list containing the parameters for the harvest conditional proobabilities
+#' @param Dj_latent Boolean specifying if the variable Dj (occurence of a disturbance) comes from 
+#'                  the data or should be estimated
+#' @param par list containing the parameters value used to simulate the data
+#' @author Björn Reineking, Julien Barrere
+simulate_status_BM2_D <- function(data.in, param_harvest_proba, Dj_latent, 
+                                  par = list(a0 = 0, a1 = 3, b0 = 0, b1 = -2, b2 = 1, b3 = 1.5, 
+                                             b4 = 3, b5 = -1, b6 = 2, b7 = 0.5, c0 = 0, c1 = 3, 
+                                             c2 = -3)) {
+  
+  # Add simulated disturbance events
+  
+  if(Dj_latent) {
+    plot_data <- data.in %>%
+      dplyr::select(plotcode, DA = DA.Senf, DS = DS.Senf) %>% 
+      distinct(plotcode, .keep_all = TRUE) %>%
+      mutate(D = rbinom(NROW(.), size = 1, prob = plogis(par$a0 + par$a1 * DA))) %>%
+      dplyr::select(-DA)
+    tree_data <- left_join(dplyr::select(data.in, -D, -DS), plot_data, by = "plotcode")
+  } else {tree_data <- data.in}
+  
+  
+  d0 = param_harvest_proba$d0
+  d1 = param_harvest_proba$d1
+  d2 = param_harvest_proba$d2
+  d3 = param_harvest_proba$d3
+  e0 = param_harvest_proba$e0
+  e1 = param_harvest_proba$e1
+  
+  # Compute probabilities based on parameters and data
+  tree_data <- tree_data %>%
+    mutate(mu1 = plogis(par$b0 + par$b1*dbh + par$b2*log(dbh) + par$b3*comp + 
+                          par$b4*sgdd + par$b5*sgdd^2 + 
+                          par$b6*wai + par$b7*wai^2), 
+           pdBM = 1 - (1 - mu1)^5,
+           mu2 = plogis(par$c0 + par$c1*DS + par$c2*DS*dbh), 
+           pdD = 1 - (1 - mu2)^5,
+           phdD = plogis(d0 + d1*dbh + d2*DS + d3*dbh*DS), 
+           phadBM = plogis(e0 + e1*dbh),
+           pdDj = 1 - (1 - pdD)*(1 - pdBM),
+           ph = (1 - D)*phadBM + D*pdDj*phdD, 
+           pd = (1 - D)*pdBM*(1 - phadBM) + D*pdDj*(1 - phdD),
+           pa = 1 - (ph + pd))
+  
+  # Multinational realization of tree state - we have to call rmultinom for each tree separately
+  hda <- t(apply(tree_data[, c("ph", "pd", "pa")], 1, function(x) rmultinom(n = 1, size = 1, prob = x)))
+  colnames(hda) <- c("h", "d", "a")
+  tree_data <- cbind(dplyr::select(tree_data, -h, -d, -a), hda)
+  tree_data
+}
+
+
+
+
 #' generate data for the jags model using simulated data
 #' @param data_simulated dataset where the tree status (dead, alive or harvested) is simulated
 #' @param Dj_latent Boolean specifying if the variable Dj (occurence of a disturbance) comes from 
@@ -536,3 +645,5 @@ generate_data_jags_D <- function(data, param_harvest_proba){
   
   return(data_jags)
 }
+
+

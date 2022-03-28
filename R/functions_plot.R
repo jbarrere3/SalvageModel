@@ -74,13 +74,13 @@ plot_fitted_vs_true_parameters <- function(data_jags, jags.model, file.in){
     ggplot(aes(x = value)) + 
     geom_histogram(aes(y = stat(density)), 
                    colour = "black", bins = 30) + 
-    facet_wrap(~ parameter, scales = "free") + 
+    facet_wrap(~ parameter) + 
     geom_vline(xintercept = 0, linetype = "dashed") +
     geom_vline(data = true.parameter.in, 
                aes(xintercept = value), 
                color = "red") + 
     xlab("Parameter value") +
-    theme_bw()
+    theme_bw() 
   
   ## - save the plot
   ggsave(file.in, plot.in, width = 17, height = 12, units = "cm", dpi = 600)

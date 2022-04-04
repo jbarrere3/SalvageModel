@@ -248,5 +248,21 @@ list(
   # Exploratory plots
   tar_target(fig_harvest_proba, plot_harvest_probability(data_model, data_model_scaled, 
                                                          "fig/exploratory/harvest_proba.png"), 
+             format = "file"), 
+  
+  
+  
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # - Step 5 - New version of the model
+  tar_target(BM_equations, fread("data/BM_equations.csv")), 
+  tar_target(data_model2, format_data_model2(FUNDIV_tree_FR, FUNDIV_plot_FR, Climate, BM_equations)), 
+  tar_target(data_model2_scaled, scale_data_model2(data_model2, var = c("dbh", "comp", "sgdd", "wai", "DS"))), 
+  tar_target(param_harvest_proba2, get_param_harvest_proba2(data_model2_scaled, Dj_latent = FALSE)),
+  tar_target(data_jags2, generate_data_jags2(data_model2_scaled, param_harvest_proba2)),
+  tar_target(jags.model2, fit_mortality2(data_jags2$data_jags, n.chains = 3, n.iter = 1500, n.burn = 500, n.thin = 1)), 
+  tar_target(fig_convergence2, plot_convergence2(jags.model2, data_jags2, BM_equations, 
+                                                 "fig/real_data/multispecies_model/convergence"), 
              format = "file")
+  
+  
 )

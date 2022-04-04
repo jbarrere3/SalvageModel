@@ -258,3 +258,62 @@ plot_harvest_probability <- function(data_model, data_model_scaled, file.in){
   return(file.in)
   
 }
+
+
+
+#' Plot Markov chain convergence of a rjags object
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param BM_equations dataframe indicating which background mortality to use per species
+#' @param dir.in Path where to save the plot
+plot_convergence2 <- function(jags.model, data_jags, BM_equations, dir.in){
+  
+  # Initialize output
+  out <- c()
+  
+  # Species included in the simulations
+  species.in <- data_jags$species_table$species
+  
+  # Loop on all species
+  for(i in 1:length(species.in)){
+    
+    # Create directories if needed
+    file.in.i <- paste0(dir.in, "/fig_convergence_", gsub(" ", "-", species.in[i]), ".png")
+    create_dir_if_needed(file.in.i)
+    # Add to the output
+    out <- c(out, file.in.i)
+    
+    ## - Identify the columns to extract
+    # Get the species code
+    species.code.in <- data_jags$species_table$sp[i]
+    # Get the list of parameters based on the bm equation of the species
+    bm.in <- ifelse((species.in[i] %in% BM_equations$species), 
+                    BM_equations$BM_eq[which(BM_equations$species == species.in[i])], 1) 
+    if(bm.in == 1) params.in <- c(paste0("b", c(0:5)), paste0("c", c(0:6)))
+    if(bm.in == 2) params.in <- c(paste0("b", c(0:9)), paste0("c", c(0:6)))
+    if(bm.in == 3) params.in <- c(paste0("b", c(0:11)), paste0("c", c(0:6)))
+    if(bm.in == 4) params.in <- c(paste0("b", c(0:7)), paste0("c", c(0:6)))
+    if(bm.in == 5) params.in <- c(paste0("b", c(0:11)), paste0("c", c(0:6)))
+    if(bm.in == 6) params.in <- c(paste0("b", c(0:13)), paste0("c", c(0:6)))
+    # Add the species code to have the complete list of columns to sample
+    params.in <- paste0(params.in, "[", species.code.in, "]")
+    
+    ## - Make the plot
+    plot.i <- ggs(as.mcmc(jags.model)) %>%
+      filter(Parameter %in% params.in) %>%
+      mutate(Parameter = gsub(paste0("\\[", species.code.in, "\\]"), "", Parameter), 
+             Chain = as.factor(Chain)) %>%
+      ggplot(aes(x = Iteration, y = value, colour = Chain, group = Chain)) + 
+      geom_line() + 
+      facet_wrap(~ Parameter, scales = "free") + 
+      scale_color_manual(values = c("#335C67", "#E09F3E", "#9E2A2B")) +
+      theme_bw() + 
+      ggtitle(species.in[i])
+    
+    ## - Save the plot
+    ggsave(file.in.i, plot.i, width = 17, height = 12, units = "cm", dpi = 600)
+    
+  }
+  # return the name of all the plots made
+  return(out)
+}

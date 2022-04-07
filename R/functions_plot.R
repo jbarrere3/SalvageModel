@@ -11,6 +11,14 @@
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+## 1. Generic functions ------------
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
 #' Function to get the path of a file, and create directories if they don't exist
 #' @param file.in character: path of the file, filename included (ex: "plot/plot.png")
 create_dir_if_needed <- function(file.in){
@@ -26,6 +34,16 @@ create_dir_if_needed <- function(file.in){
 }
 
 
+
+
+
+
+
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+## 2. Exploratory plots ------------
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 #' Plot harvest probability depending on dbh, disturbance and land property
@@ -94,6 +112,45 @@ plot_harvest_probability <- function(data_model, data_model_scaled, file.in){
 
 
 
+
+
+#' Plot harvest probability depending on dbh, disturbance and land property
+#' @param data_model tree level dataset with the variables necessary for the model
+#' @param file.in Path and file where to save the plot
+plot_disturbed_trees_per_species <- function(data_model, file.in){
+  
+  ## - Create directories if needed
+  create_dir_if_needed(file.in)
+  
+  ## - make the plot
+  plot.out <- data_model %>%
+    mutate(Dnone = ifelse(D == 0, 1, 0)) %>%
+    gather(key = "disturbance.type", value = "dist.present", "Dfire", "Dother", "Dstorm", "Dnone") %>%
+    filter(dist.present == 1) %>%
+    mutate(disturbance.type = gsub("D", "", disturbance.type)) %>%
+    group_by(disturbance.type, species) %>%
+    summarize(n = n()) %>%
+    ggplot(aes(x = species, y = n)) + 
+    geom_bar(stat = "identity", colour = "black") + 
+    facet_wrap(~ disturbance.type, scales = "free_x") + 
+    coord_flip() + 
+    theme_bw() + 
+    ylab("Number of trees impacted")
+  
+  
+  ## - save the plot
+  ggsave(file.in, plot.out, width = 18, height = 16, units = "cm", dpi = 600)
+  return(file.in)
+  
+}
+
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+## 3. Diagnostic plots ------------
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
 #' Plot Markov chain convergence of a rjags object
 #' @param jags.model rjags object
 #' @param data_jags input used for the jags model
@@ -125,12 +182,12 @@ plot_convergence <- function(jags.model, data_jags, BM_equations, dir.in){
     # Get the list of parameters based on the bm equation of the species
     bm.in <- ifelse((species.in[i] %in% BM_equations$species), 
                     BM_equations$BM_eq[which(BM_equations$species == species.in[i])], 1) 
-    if(bm.in == 1) params.in <- c(paste0("b", c(0:5)), paste0("c", c(0:6)))
-    if(bm.in == 2) params.in <- c(paste0("b", c(0:9)), paste0("c", c(0:6)))
-    if(bm.in == 3) params.in <- c(paste0("b", c(0:11)), paste0("c", c(0:6)))
-    if(bm.in == 4) params.in <- c(paste0("b", c(0:7)), paste0("c", c(0:6)))
-    if(bm.in == 5) params.in <- c(paste0("b", c(0:11)), paste0("c", c(0:6)))
-    if(bm.in == 6) params.in <- c(paste0("b", c(0:13)), paste0("c", c(0:6)))
+    if(bm.in == 1) params.in <- c(paste0("b", c(0:5)), paste0("c", c(0:9)))
+    if(bm.in == 2) params.in <- c(paste0("b", c(0:9)), paste0("c", c(0:9)))
+    if(bm.in == 3) params.in <- c(paste0("b", c(0:11)), paste0("c", c(0:9)))
+    if(bm.in == 4) params.in <- c(paste0("b", c(0:7)), paste0("c", c(0:9)))
+    if(bm.in == 5) params.in <- c(paste0("b", c(0:11)), paste0("c", c(0:9)))
+    if(bm.in == 6) params.in <- c(paste0("b", c(0:13)), paste0("c", c(0:9)))
     # Add the species code to have the complete list of columns to sample
     params.in <- paste0(params.in, "[", species.code.in, "]")
     params <- c(params, params.in)
@@ -220,3 +277,4 @@ plot_parameters_per_species <- function(jags.model, data_jags, file.in){
   return(file.in)
   
 }
+

@@ -431,8 +431,8 @@ generate_data_jags_full_sub <- function(data, p = param_harvest_proba){
                              group_by(plotcode) %>%
                              mutate(prop.species = n/sum(n), 
                                     prop.species.dead = n.dead/n) %>%
-                             filter(species == "Pinus halepensis" & prop.species > 0.8 & 
-                                      prop.species.dead == 1 & n > 20))$plotcode
+                             filter(species == "Pinus halepensis" & prop.species == 1 & 
+                                      prop.species.dead == 1 & n > 25))$plotcode
   
   # Format final data
   data.in <- data_sub %>%

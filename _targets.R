@@ -84,6 +84,9 @@ list(
   # - With France and Spain
   tar_target(jags.model_full_sub, fit_mortality_full_sub(
     data_jags_full_sub$data_jags, n.chains = 3, n.iter = 2000, n.burn = 1000, n.thin = 1)), 
+  # - With France and Spain and uniform distribution for disturbance intensity
+  tar_target(jags.model_full_unif_sub, fit_mortality_full_unif_sub(
+    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 2000, n.burn = 1000, n.thin = 1)), 
   
   # Plot convergence 
   tar_target(fig_convergence_sub, plot_convergence(jags.model_sub, data_jags_sub, BM_equations, 
@@ -92,11 +95,28 @@ list(
   tar_target(fig_convergence_full_sub, plot_convergence(jags.model_full_sub, data_jags_full_sub, BM_equations, 
                                                    "fig/real_data/multispecies_submodel_full/convergence"), 
              format = "file"),
+  tar_target(fig_convergence_full_unif_sub, plot_convergence(jags.model_full_unif_sub, data_jags_full_sub, BM_equations, 
+                                                        "fig/real_data/multispecies_submodel_full_unif/convergence"), 
+             format = "file"),
   
   # Plot parameters per species
   tar_target(fig_param_per_species, plot_parameters_per_species(jags.model_sub, data_jags_sub, 
                                                                 "fig/real_data/multispecies_submodel/parameters_per_sp.png"), 
              format = "file"), 
+  tar_target(fig_param_per_species_full, plot_parameters_per_species_full(jags.model_full_sub, data_jags_full_sub, 
+                                                                "fig/real_data/multispecies_submodel_full/parameters_per_sp.png"), 
+             format = "file"), 
+  tar_target(fig_param_per_species_full_unif, plot_parameters_per_species_full(jags.model_full_unif_sub, data_jags_full_sub, 
+                                                                          "fig/real_data/multispecies_submodel_full_unif/parameters_per_sp.png"), 
+             format = "file"), 
+  
+  # Plot the predictions of the model
+  tar_target(fig_prediction_full, plot_prediction_full(jags.model_full_sub, data_jags_full_sub, data_model_full_scaled, data_model_full,
+                                                       "fig/real_data/multispecies_submodel_full/predictions"), 
+             format = "file"),
+  tar_target(fig_prediction_full_unif, plot_prediction_full(jags.model_full_unif_sub, data_jags_full_sub, data_model_full_scaled, data_model_full,
+                                                       "fig/real_data/multispecies_submodel_full_unif/predictions"), 
+             format = "file"),
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # - Step 4 - Exploratory plots

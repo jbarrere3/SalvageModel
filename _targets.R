@@ -24,7 +24,7 @@ lapply(grep("R$", list.files("R"), value = TRUE), function(x) source(file.path("
 packages.in <- c("dplyr", "ggplot2", "RCurl", "httr", "tidyr", "data.table", "sp", "R2jags", "ggmcmc", "taxize")
 for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.packages()))) install.packages(packages.in[i])
 # Targets options
-options(tidyverse.quiet = TRUE)
+options(tidyverse.quiet = TRUE, clustermq.scheduler = "multiprocess")
 tar_option_set(packages = packages.in)
 set.seed(2)
 
@@ -35,7 +35,7 @@ set.seed(2)
 
 list(
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # - Step 1 - Load data
+  # -- Step 1 - Load data ----
   
   # Raw data
   tar_target(datafiles, paste0("data/", list.files("data")), format = "file"),
@@ -54,8 +54,10 @@ list(
   tar_target(species, get_species_info(FUNDIV_tree)),
   
   
+  
+  
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # - Step 2 - Prepare data for the model
+  # -- Step 2 - Prepare data for the model ----
   
   # Keep variables relevant to the model
   tar_target(data_model, format_data_model(FUNDIV_tree_FR, FUNDIV_plot_FR, Climate, BM_equations)), 
@@ -74,8 +76,10 @@ list(
   tar_target(data_jags_full_sub, 
              generate_data_jags_full_sub(data_model_full_scaled, p = param_harvest_proba_full)),
   
+  
+  
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # - Step 3 - Model fit and output
+  # -- Step 3 - Model fit and output ----
   
   # Fit the jags model
   # - With France only
@@ -87,6 +91,17 @@ list(
   # - With France and Spain and uniform distribution for disturbance intensity
   tar_target(jags.model_full_unif_sub, fit_mortality_full_unif_sub(
     data_jags_full_sub$data_jags, n.chains = 3, n.iter = 2000, n.burn = 1000, n.thin = 1)), 
+  # - Test with latent variable extracted and exponential distribution for power parameter
+  tar_target(jags.model_full_sub_test, fit_mortality_full_sub_test(
+    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 1)), 
+  tar_target(jags.model_full_unif_sub_test, fit_mortality_full_unif_sub_test(
+    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 1)), 
+  
+  
+  
+  
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # -- Step 4 - Plot model outputs ----
   
   # Plot convergence 
   tar_target(fig_convergence_sub, plot_convergence(jags.model_sub, data_jags_sub, BM_equations, 
@@ -97,6 +112,12 @@ list(
              format = "file"),
   tar_target(fig_convergence_full_unif_sub, plot_convergence(jags.model_full_unif_sub, data_jags_full_sub, BM_equations, 
                                                         "fig/real_data/multispecies_submodel_full_unif/convergence"), 
+             format = "file"),
+  tar_target(fig_convergence_full_sub_test, plot_convergence(jags.model_full_sub_test, data_jags_full_sub, BM_equations, 
+                                                        "fig/real_data/multispecies_submodel_full_test/convergence"), 
+             format = "file"),
+  tar_target(fig_convergence_full_unif_sub_test, plot_convergence(jags.model_full_unif_sub_test, data_jags_full_sub, BM_equations, 
+                                                             "fig/real_data/multispecies_submodel_full_unif_test/convergence"), 
              format = "file"),
   
   # Plot parameters per species
@@ -118,8 +139,18 @@ list(
                                                        "fig/real_data/multispecies_submodel_full_unif/predictions"), 
              format = "file"),
   
+  # Plot disturbance severity vs intensity
+  tar_target(fig_intensity_vs_severity_test, 
+             plot_intensity_vs_severity(jags.model_full_sub_test, data_jags_full_sub, 
+                                        "fig/real_data/testmodel/intensity_vs_severity.png"), 
+             format = "file"),
+  
+  
+  
+  
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # - Step 4 - Exploratory plots
+  # -- Step 5 - Exploratory plots ----
+  
   tar_target(fig_disturbed_trees_per_species, 
              plot_disturbed_trees_per_species(data_model_full, "fig/exploratory/disturbed_trees_per_species.png"), 
              format = "file")

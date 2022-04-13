@@ -209,23 +209,7 @@ plot_convergence <- function(jags.model, data_jags, BM_equations, dir.in){
     
   }
   
-  ## - Plot of all the other parameters
-  ## - Make the plot
-  plot.other <- ggs(as.mcmc(jags.model)) %>%
-    filter(!(Parameter %in% params)) %>%
-    mutate(Chain = as.factor(Chain)) %>%
-    ggplot(aes(x = Iteration, y = value, colour = Chain, group = Chain)) + 
-    geom_line() + 
-    facet_wrap(~ Parameter, scales = "free") + 
-    scale_color_manual(values = c("#335C67", "#E09F3E", "#9E2A2B")) +
-    theme_bw()
-  # Create directories if needed
-  file.other <- paste0(dir.in, "/fig_other_param.png")
-  create_dir_if_needed(file.other)
-  # Add to the output
-  out <- c(out, file.other)
-  ## - Save the plot
-  ggsave(file.other, plot.other, width = 17, height = 8, units = "cm", dpi = 600)
+  
   # return the name of all the plots made
   return(out)
 }
@@ -412,5 +396,57 @@ plot_prediction_full <- function(jags.model, data_jags, data_model_scaled, data_
   
   # return the name of all the plots made
   return(out)
+}
+
+
+#' Plot the relation between disturbance severity (observed) and intensity (estimated)
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param file.in Path and file where to save the plot
+plot_intensity_vs_severity <- function(jags.model, data_jags, file.in){
+  
+  ## - Create directories if needed
+  create_dir_if_needed(file.in)
+  
+  ## - make the plot
+  plot.out <- data.frame(plot = data_jags$data_jags$plot, 
+                         Ifire = data_jags$data_jags$Dfire, 
+                         Istorm = data_jags$data_jags$Dstorm, 
+                         Iother = data_jags$data_jags$Dother) %>%
+    distinct() %>%
+    gather(key = "variable", value = "value", "Ifire", "Istorm", "Iother") %>%
+    filter(value == 1) %>%
+    mutate(Parameter = paste0(variable, "[", plot, "]")) %>%
+    left_join((ggs(as.mcmc(jags.model)) %>%
+                 group_by(Parameter) %>%
+                 summarize(intensity.mean = mean(value, na.rm = T), 
+                           intensity.sd = sd(value, na.rm = T))), 
+              by = "Parameter") %>%
+    left_join((data.frame(plot = data_jags$data_jags$plot, 
+                          state = data_jags$data_jags$state) %>%
+                 mutate(dead = ifelse(state == 3, 0, 1)) %>%
+                 group_by(plot) %>%
+                 summarize(severity = sum(dead)/n())), 
+              by = "plot") %>%
+    mutate(disturbance.type = gsub("I", "", variable)) %>%
+    dplyr::select(plot, disturbance.type, severity, intensity.mean, intensity.sd) %>%
+    filter(!is.na(intensity.mean)) %>%
+    ggplot(aes(x = severity, y = intensity.mean)) + 
+    geom_point(aes(size = 1/intensity.sd), shape = 21, 
+               alpha = 0.3, fill = "black", color = "black") + 
+    theme_bw() + 
+    geom_abline(intercept = 0, slope = 1) + 
+    geom_smooth(se = FALSE, method = "loess", color = "red") + 
+    facet_wrap(~ disturbance.type) + 
+    xlab("Observed disturbance severity") + 
+    ylab("Estimated disturbance intensity") + 
+    theme(strip.background = element_blank(), 
+          legend.position = "none")
+  
+  
+  ## - save the plot
+  ggsave(file.in, plot.out, width = 23, height = 8, units = "cm", dpi = 600)
+  return(file.in)
+  
 }
 

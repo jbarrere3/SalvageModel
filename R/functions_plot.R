@@ -297,7 +297,7 @@ plot_parameters_per_species_full <- function(jags.model, data_jags, file.in){
     left_join(data_jags$species_table, by = "sp") %>% 
     dplyr::select(-sp) %>%
     spread(key = species, value = value) %>%
-    mutate(.PRIOR = case_when(Parameter %in% c("c0", "c3", "c6") ~ rnorm(nrow(.), -2, 1), 
+    mutate(.PRIOR = case_when(Parameter %in% c("c0", "c3", "c6") ~ rnorm(nrow(.), -3, 1), 
                               Parameter %in% c("c1", "c4", "c7") ~ rnorm(nrow(.), 3, 1), 
                               Parameter %in% c("c2", "c5", "c8") ~ rnorm(nrow(.), 0, 1/(0.5^2)), 
                               TRUE ~ NA_real_)) %>%

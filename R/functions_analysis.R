@@ -246,13 +246,13 @@ fit_mortality_full_sub <- function(data_jags.in, n.chains, n.iter, n.burn, n.thi
     ## - Priors
     # Priors at species level
     for(s in 1:Nspecies){
-      c0[s] ~ dnorm(-2, 1)
+      c0[s] ~ dnorm(-3, 1)
       c1[s] ~ dnorm(3, 1)
       c2[s] ~ dnorm(0, 0.5)
-      c3[s] ~ dnorm(-2, 1)
+      c3[s] ~ dnorm(-3, 1)
       c4[s] ~ dnorm(3, 1)
       c5[s] ~ dnorm(0, 0.5)
-      c6[s] ~ dnorm(-2, 1)
+      c6[s] ~ dnorm(-3, 1)
       c7[s] ~ dnorm(3, 1)
       c8[s] ~ dnorm(0, 0.5)
     }
@@ -331,13 +331,13 @@ fit_mortality_full_unif_sub <- function(data_jags.in, n.chains, n.iter, n.burn, 
     ## - Priors
     # Priors at species level
     for(s in 1:Nspecies){
-      c0[s] ~ dnorm(-2, 1)
+      c0[s] ~ dnorm(-3, 1)
       c1[s] ~ dnorm(3, 1)
       c2[s] ~ dnorm(0, 0.5)
-      c3[s] ~ dnorm(-2, 1)
+      c3[s] ~ dnorm(-3, 1)
       c4[s] ~ dnorm(3, 1)
       c5[s] ~ dnorm(0, 0.5)
-      c6[s] ~ dnorm(-2, 1)
+      c6[s] ~ dnorm(-3, 1)
       c7[s] ~ dnorm(3, 1)
       c8[s] ~ dnorm(0, 0.5)
     }

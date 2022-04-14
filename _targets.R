@@ -87,15 +87,15 @@ list(
     data_jags_sub$data_jags, n.chains = 3, n.iter = 1000, n.burn = 500, n.thin = 1)), 
   # - With France and Spain
   tar_target(jags.model_full_sub, fit_mortality_full_sub(
-    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 2000, n.burn = 1000, n.thin = 1)), 
+    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 500, n.burn = 250, n.thin = 1)), 
   # - With France and Spain and uniform distribution for disturbance intensity
   tar_target(jags.model_full_unif_sub, fit_mortality_full_unif_sub(
-    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 2000, n.burn = 1000, n.thin = 1)), 
+    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 500, n.burn = 250, n.thin = 1)), 
   # - Test with latent variable extracted and exponential distribution for power parameter
   tar_target(jags.model_full_sub_test, fit_mortality_full_sub_test(
-    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 1)), 
+    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 500, n.burn = 250, n.thin = 1)), 
   tar_target(jags.model_full_unif_sub_test, fit_mortality_full_unif_sub_test(
-    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 1)), 
+    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 500, n.burn = 250, n.thin = 1)), 
   
   
   

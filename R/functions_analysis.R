@@ -272,7 +272,7 @@ fit_mortality_full_sub <- function(data_jags.in, n.chains, n.iter, n.burn, n.thi
   
   ## - Fit the model
   out <- R2jags::jags(data = data_jags.in,
-                      param = paste0("c", c(0:8)),
+                      param = c(paste0("c", c(0:8)), "Ifire", "Istorm", "Iother"),
                       model.file = textConnection(mortality_model_D),
                       n.chains = n.chains,
                       n.iter = n.iter,
@@ -315,15 +315,15 @@ fit_mortality_full_sub_test <- function(data_jags.in, n.chains, n.iter, n.burn, 
       pdDj[i] = 1 - (1 - Dfire[i]*pdfire[i])*(1 - Dstorm[i]*pdstorm[i])*(1 - Dother[i]*pdother[i])
       
       # Probability to die from a storm disturbance
-      logit(pstorm[i]) = c0[sp[i]] + c1[sp[i]]*Istorm[plot[i]] + c2[sp[i]]*Istorm[plot[i]]*dbh[i] 
+      logit(pstorm[i]) = c0[sp[i]] + (c1[sp[i]]*Istorm[plot[i]]*(dbh[i]^c2[sp[i]])) 
       pdstorm[i] = 1 - (1 - pstorm[i])^time[i]
       
       # Probability to die from an other disturbance
-      logit(pother[i]) = c3[sp[i]] + c4[sp[i]]*Iother[plot[i]] + c5[sp[i]]*Iother[plot[i]]*dbh[i] 
+      logit(pother[i]) = c3[sp[i]] + (c4[sp[i]]*Iother[plot[i]]*(dbh[i]^c5[sp[i]])) 
       pdother[i] = 1 - (1 - pother[i])^time[i]
       
       # Probability to die from a fire disturbance
-      logit(pfire[i]) = c6[sp[i]] + c7[sp[i]]*Ifire[plot[i]] + c8[sp[i]]*Ifire[plot[i]]*dbh[i] 
+      logit(pfire[i]) = c6[sp[i]] + (c7[sp[i]]*Ifire[plot[i]]*(dbh[i]^c8[sp[i]])) 
       pdfire[i] = 1 - (1 - pfire[i])^time[i]
     }
     
@@ -440,7 +440,7 @@ fit_mortality_full_unif_sub <- function(data_jags.in, n.chains, n.iter, n.burn, 
   
   ## - Fit the model
   out <- R2jags::jags(data = data_jags.in,
-                      param = paste0("c", c(0:8)),
+                      param = c(paste0("c", c(0:8)), "Ifire", "Istorm", "Iother"),
                       model.file = textConnection(mortality_model_D),
                       n.chains = n.chains,
                       n.iter = n.iter,
@@ -483,15 +483,15 @@ fit_mortality_full_unif_sub_test <- function(data_jags.in, n.chains, n.iter, n.b
       pdDj[i] = 1 - (1 - Dfire[i]*pdfire[i])*(1 - Dstorm[i]*pdstorm[i])*(1 - Dother[i]*pdother[i])
       
       # Probability to die from a storm disturbance
-      logit(pstorm[i]) = c0[sp[i]] + c1[sp[i]]*Istorm[plot[i]] + c2[sp[i]]*Istorm[plot[i]]*dbh[i] 
+      logit(pstorm[i]) = c0[sp[i]] + (c1[sp[i]]*Istorm[plot[i]]*(dbh[i]^c2[sp[i]])) 
       pdstorm[i] = 1 - (1 - pstorm[i])^time[i]
       
       # Probability to die from an other disturbance
-      logit(pother[i]) = c3[sp[i]] + c4[sp[i]]*Iother[plot[i]] + c5[sp[i]]*Iother[plot[i]]*dbh[i] 
+      logit(pother[i]) = c3[sp[i]] + (c4[sp[i]]*Iother[plot[i]]*(dbh[i]^c5[sp[i]])) 
       pdother[i] = 1 - (1 - pother[i])^time[i]
       
       # Probability to die from a fire disturbance
-      logit(pfire[i]) = c6[sp[i]] + c7[sp[i]]*Ifire[plot[i]] + c8[sp[i]]*Ifire[plot[i]]*dbh[i] 
+      logit(pfire[i]) = c6[sp[i]] + (c7[sp[i]]*Ifire[plot[i]]*(dbh[i]^c8[sp[i]])) 
       pdfire[i] = 1 - (1 - pfire[i])^time[i]
     }
     

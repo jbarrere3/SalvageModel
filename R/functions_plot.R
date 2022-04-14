@@ -313,7 +313,7 @@ plot_parameters_per_species_full <- function(jags.model, data_jags, file.in){
 
 
 
-#' Plot Markov chain convergence of a rjags object
+#' Plot death probability predicted by the model
 #' @param jags.model rjags object
 #' @param data_jags input used for the jags model
 #' @param data_model Tree data formatted for the IPM. 
@@ -351,6 +351,91 @@ plot_prediction_full <- function(jags.model, data_jags, data_model_scaled, data_
     mutate(pdstorm = plogis(c0 + c1*Intensity*dbh.scaled^c2), 
            pdother = plogis(c3 + c4*Intensity*dbh.scaled^c5), 
            pdfire = plogis(c6 + c7*Intensity*dbh.scaled^c8)) 
+  
+  # - Plot for storm
+  plot.storm <- data_for_plot %>%
+    ggplot(aes(x = dbh, y = pdstorm, group = Intensity, color = Intensity)) + 
+    geom_line() + 
+    scale_color_gradient(low = "blue", high = "black") + 
+    facet_wrap(~ species) +
+    theme(panel.background = element_rect(color = "black", fill = "white"), 
+          strip.background = element_blank(), 
+          panel.grid = element_blank()) + 
+    ylab("Probability to die from a storm") + 
+    xlab("dbh (mm)")
+  
+  # - Plot for other
+  plot.other <- data_for_plot %>%
+    ggplot(aes(x = dbh, y = pdother, group = Intensity, color = Intensity)) + 
+    geom_line() + 
+    scale_color_gradient(low = "green", high = "black") + 
+    facet_wrap(~ species) +
+    theme(panel.background = element_rect(color = "black", fill = "white"), 
+          strip.background = element_blank(), 
+          panel.grid = element_blank()) + 
+    ylab("Probability to die from an other disturbance") + 
+    xlab("dbh (mm)")
+  
+  # - Plot for fire
+  plot.fire <- data_for_plot %>%
+    ggplot(aes(x = dbh, y = pdfire, group = Intensity, color = Intensity)) + 
+    geom_line() + 
+    scale_color_gradient(low = "orange", high = "black") + 
+    facet_wrap(~ species) +
+    theme(panel.background = element_rect(color = "black", fill = "white"), 
+          strip.background = element_blank(), 
+          panel.grid = element_blank()) + 
+    ylab("Probability to die from a fire") + 
+    xlab("dbh (mm)")
+  
+  
+  # - Save the three plots
+  ggsave(out[1], plot.storm, width = 25, height = 20, units = "cm", dpi = 600)
+  ggsave(out[2], plot.other, width = 25, height = 20, units = "cm", dpi = 600)
+  ggsave(out[3], plot.fire, width = 25, height = 20, units = "cm", dpi = 600)
+  
+  # return the name of all the plots made
+  return(out)
+}
+
+#' Plot death probability predicted by the model (for the test model)
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param data_model Tree data formatted for the IPM. 
+#' @param data_model_scaled Tree data formatted for the IPM and scaled 
+#' @param dir.in Path where to save the plot
+plot_prediction_full_test <- function(jags.model, data_jags, data_model_scaled, data_model, dir.in){
+  
+  # Initialize output
+  out <- paste0(dir.in, c("/storm", "/other", "/fire"), ".png")
+  
+  # Create the directories that are needed
+  for(i in 1:length(out)) create_dir_if_needed(out[i])
+  
+  # Identify parameters per species
+  param_per_species <- ggs(as.mcmc(jags.model)) %>%
+    filter(Parameter != "deviance") %>%
+    mutate(sp = as.integer(gsub("\\]", "", gsub(".+\\[", "", Parameter))), 
+           Parameter = gsub("\\[.+\\]", "", Parameter)) %>%
+    left_join(data_jags$species_table, by = "sp") %>% 
+    group_by(species, Parameter) %>%
+    summarize(mean = mean(value)) %>%
+    spread(key = "Parameter", value = "mean")
+  
+  # Model to scale dbh
+  scale_dbh <- lm(dbh.scaled ~ dbh, 
+                  data = data.frame(dbh = data_model$dbh, 
+                                    dbh.scaled = data_model_scaled$dbh))
+  
+  # - Pre-format the data before plotting
+  data_for_plot <- expand.grid(species = unique(param_per_species$species), 
+                               dbh = c(100:1200), 
+                               Intensity = c(0.2, 0.4, 0.6, 0.8, 1)) %>%
+    mutate(dbh.scaled = predict(scale_dbh, newdata = .)) %>%
+    left_join(param_per_species, by = "species") %>%
+    mutate(pdstorm = plogis(c0 + c1*Intensity + c2*Intensity*dbh.scaled), 
+           pdother = plogis(c3 + c4*Intensity + c5*Intensity*dbh.scaled), 
+           pdfire = plogis(c6 + c7*Intensity + c8*Intensity*dbh.scaled)) 
   
   # - Plot for storm
   plot.storm <- data_for_plot %>%

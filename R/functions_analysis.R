@@ -315,30 +315,30 @@ fit_mortality_full_sub_test <- function(data_jags.in, n.chains, n.iter, n.burn, 
       pdDj[i] = 1 - (1 - Dfire[i]*pdfire[i])*(1 - Dstorm[i]*pdstorm[i])*(1 - Dother[i]*pdother[i])
       
       # Probability to die from a storm disturbance
-      logit(pstorm[i]) = c0[sp[i]] + (c1[sp[i]]*Istorm[plot[i]]*(dbh[i]^c2[sp[i]])) 
+      logit(pstorm[i]) = c0[sp[i]] + c1[sp[i]]*Istorm[plot[i]] + c2[sp[i]]*Istorm[plot[i]]*dbh[i] 
       pdstorm[i] = 1 - (1 - pstorm[i])^time[i]
       
       # Probability to die from an other disturbance
-      logit(pother[i]) = c3[sp[i]] + (c4[sp[i]]*Iother[plot[i]]*(dbh[i]^c5[sp[i]])) 
+      logit(pother[i]) = c3[sp[i]] + c4[sp[i]]*Iother[plot[i]] + c5[sp[i]]*Iother[plot[i]]*dbh[i] 
       pdother[i] = 1 - (1 - pother[i])^time[i]
       
       # Probability to die from a fire disturbance
-      logit(pfire[i]) = c6[sp[i]] + (c7[sp[i]]*Ifire[plot[i]]*(dbh[i]^c8[sp[i]])) 
+      logit(pfire[i]) = c6[sp[i]] + c7[sp[i]]*Ifire[plot[i]] + c8[sp[i]]*Ifire[plot[i]]*dbh[i] 
       pdfire[i] = 1 - (1 - pfire[i])^time[i]
     }
     
     ## - Priors
     # Priors at species level
     for(s in 1:Nspecies){
-      c0[s] ~ dnorm(-3, 1)
-      c1[s] ~ dnorm(3, 1)
-      c2[s] ~ dexp(0.5)
-      c3[s] ~ dnorm(-3, 1)
-      c4[s] ~ dnorm(3, 1)
-      c5[s] ~ dexp(0.5)
-      c6[s] ~ dnorm(-3, 1)
-      c7[s] ~ dnorm(3, 1)
-      c8[s] ~ dexp(0.5)
+      c0[s] ~ dnorm(0, 1)
+      c1[s] ~ dexp(0.5)
+      c2[s] ~ dnorm(0, 1)
+      c3[s] ~ dnorm(0, 1)
+      c4[s] ~ dexp(0.5)
+      c5[s] ~ dnorm(0, 1)
+      c6[s] ~ dnorm(0, 1)
+      c7[s] ~ dexp(0.5)
+      c8[s] ~ dnorm(0, 1)
     }
     
     # Disturbance intensity at plot level
@@ -483,30 +483,30 @@ fit_mortality_full_unif_sub_test <- function(data_jags.in, n.chains, n.iter, n.b
       pdDj[i] = 1 - (1 - Dfire[i]*pdfire[i])*(1 - Dstorm[i]*pdstorm[i])*(1 - Dother[i]*pdother[i])
       
       # Probability to die from a storm disturbance
-      logit(pstorm[i]) = c0[sp[i]] + (c1[sp[i]]*Istorm[plot[i]]*(dbh[i]^c2[sp[i]])) 
+      logit(pstorm[i]) = c0[sp[i]] + c1[sp[i]]*Istorm[plot[i]] + c2[sp[i]]*Istorm[plot[i]]*dbh[i] 
       pdstorm[i] = 1 - (1 - pstorm[i])^time[i]
       
       # Probability to die from an other disturbance
-      logit(pother[i]) = c3[sp[i]] + (c4[sp[i]]*Iother[plot[i]]*(dbh[i]^c5[sp[i]])) 
+      logit(pother[i]) = c3[sp[i]] + c4[sp[i]]*Iother[plot[i]] + c5[sp[i]]*Iother[plot[i]]*dbh[i] 
       pdother[i] = 1 - (1 - pother[i])^time[i]
       
       # Probability to die from a fire disturbance
-      logit(pfire[i]) = c6[sp[i]] + (c7[sp[i]]*Ifire[plot[i]]*(dbh[i]^c8[sp[i]])) 
+      logit(pfire[i]) = c6[sp[i]] + c7[sp[i]]*Ifire[plot[i]] + c8[sp[i]]*Ifire[plot[i]]*dbh[i] 
       pdfire[i] = 1 - (1 - pfire[i])^time[i]
     }
     
     ## - Priors
     # Priors at species level
     for(s in 1:Nspecies){
-      c0[s] ~ dnorm(-3, 1)
-      c1[s] ~ dnorm(3, 1)
-      c2[s] ~ dexp(0.5)
-      c3[s] ~ dnorm(-3, 1)
-      c4[s] ~ dnorm(3, 1)
-      c5[s] ~ dexp(0.5)
-      c6[s] ~ dnorm(-3, 1)
-      c7[s] ~ dnorm(3, 1)
-      c8[s] ~ dexp(0.5)
+      c0[s] ~ dnorm(0, 1)
+      c1[s] ~ dexp(0.5)
+      c2[s] ~ dnorm(0, 1)
+      c3[s] ~ dnorm(0, 1)
+      c4[s] ~ dexp(0.5)
+      c5[s] ~ dnorm(0, 1)
+      c6[s] ~ dnorm(0, 1)
+      c7[s] ~ dexp(0.5)
+      c8[s] ~ dnorm(0, 1)
     }
     
     # Disturbance intensity at plot level

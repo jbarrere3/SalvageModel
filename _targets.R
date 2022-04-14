@@ -138,6 +138,12 @@ list(
   tar_target(fig_prediction_full_unif, plot_prediction_full(jags.model_full_unif_sub, data_jags_full_sub, data_model_full_scaled, data_model_full,
                                                        "fig/real_data/multispecies_submodel_full_unif/predictions"), 
              format = "file"),
+  tar_target(fig_prediction_full_test, plot_prediction_full_test(jags.model_full_sub_test, data_jags_full_sub, data_model_full_scaled, data_model_full,
+                                                       "fig/real_data/multispecies_submodel_full_test/predictions"), 
+             format = "file"),
+  tar_target(fig_prediction_full_unif_test, plot_prediction_full_test(jags.model_full_unif_sub_test, data_jags_full_sub, data_model_full_scaled, data_model_full,
+                                                            "fig/real_data/multispecies_submodel_full_unif_test/predictions"), 
+             format = "file"),
   
   # Plot disturbance severity vs intensity
   tar_target(fig_intensity_vs_severity_test, 

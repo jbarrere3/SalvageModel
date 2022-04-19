@@ -246,16 +246,17 @@ fit_mortality_full_sub <- function(data_jags.in, n.chains, n.iter, n.burn, n.thi
     ## - Priors
     # Priors at species level
     for(s in 1:Nspecies){
-      c0[s] ~ dnorm(-3, 1)
-      c1[s] ~ dnorm(3, 1)
-      c2[s] ~ dnorm(0, 0.5)
-      c3[s] ~ dnorm(-3, 1)
-      c4[s] ~ dnorm(3, 1)
-      c5[s] ~ dnorm(0, 0.5)
-      c6[s] ~ dnorm(-3, 1)
-      c7[s] ~ dnorm(3, 1)
-      c8[s] ~ dnorm(0, 0.5)
+      c0[s] ~ dnorm(0, 1)
+      c1[s] ~ dexp(0.5)
+      c2[s] ~ dnorm(0, 1)
+      c3[s] ~ dnorm(0, 1)
+      c4[s] ~ dexp(0.5)
+      c5[s] ~ dnorm(0, 1)
+      c6[s] ~ dnorm(0, 1)
+      c7[s] ~ dexp(0.5)
+      c8[s] ~ dnorm(0, 1)
     }
+    
     
     # Disturbance intensity at plot level
     for(k in 1:Nplot){
@@ -272,7 +273,7 @@ fit_mortality_full_sub <- function(data_jags.in, n.chains, n.iter, n.burn, n.thi
   
   ## - Fit the model
   out <- R2jags::jags(data = data_jags.in,
-                      param = c(paste0("c", c(0:8)), "Ifire", "Istorm", "Iother"),
+                      param = paste0("c", c(0:8)),
                       model.file = textConnection(mortality_model_D),
                       n.chains = n.chains,
                       n.iter = n.iter,
@@ -325,9 +326,34 @@ fit_mortality_full_sub_test <- function(data_jags.in, n.chains, n.iter, n.burn, 
       # Probability to die from a fire disturbance
       logit(pfire[i]) = c6[sp[i]] + (c7[sp[i]]*Ifire[plot[i]]*(dbh[i]^c8[sp[i]])) 
       pdfire[i] = 1 - (1 - pfire[i])^time[i]
+      
+      # Probability to be harvested knowing that the tree died from disturbance
+      phdD[i] = 1 - (1 - Dfire[i]*phdDfire[i])*(1 - Dstorm[i]*phdDstorm[i])*(1 - Dother[i]*phdDother[i])
+      
+      # Harvest probability for storm
+      logit(phdDstorm[i]) = h0 + h1*Istorm[plot[i]]*(dbh[i]^h2) 
+      
+      # Harvest probability for other disturbances
+      logit(phdDother[i]) = h3 + h4*Istorm[plot[i]]*(dbh[i]^h5)
+      
+      # Harvest probability for fire
+      logit(phdDfire[i]) = h6 + h7*Ifire[plot[i]]*(dbh[i]^h8) 
+      
+      
     }
     
     ## - Priors
+    # harvest priors
+    h0 ~ dnorm(0, 1)
+    h1 ~ dnorm(0, 1)
+    h2 ~ dnorm(0, 1)
+    h3 ~ dnorm(0, 1)
+    h4 ~ dnorm(0, 1)
+    h5 ~ dnorm(0, 1)
+    h6 ~ dnorm(0, 1)
+    h7 ~ dnorm(0, 1)
+    h8 ~ dnorm(0, 1)
+    
     # Priors at species level
     for(s in 1:Nspecies){
       c0[s] ~ dnorm(0, 1)
@@ -356,7 +382,7 @@ fit_mortality_full_sub_test <- function(data_jags.in, n.chains, n.iter, n.burn, 
   
   ## - Fit the model
   out <- R2jags::jags(data = data_jags.in,
-                      param = c(paste0("c", c(0:8)), "Ifire", "Istorm", "Iother"),
+                      param = c(paste0("c", c(0:8)), paste0("h", c(0:8))),
                       model.file = textConnection(mortality_model_D),
                       n.chains = n.chains,
                       n.iter = n.iter,
@@ -414,90 +440,6 @@ fit_mortality_full_unif_sub <- function(data_jags.in, n.chains, n.iter, n.burn, 
     ## - Priors
     # Priors at species level
     for(s in 1:Nspecies){
-      c0[s] ~ dnorm(-3, 1)
-      c1[s] ~ dnorm(3, 1)
-      c2[s] ~ dnorm(0, 0.5)
-      c3[s] ~ dnorm(-3, 1)
-      c4[s] ~ dnorm(3, 1)
-      c5[s] ~ dnorm(0, 0.5)
-      c6[s] ~ dnorm(-3, 1)
-      c7[s] ~ dnorm(3, 1)
-      c8[s] ~ dnorm(0, 0.5)
-    }
-    
-    # Disturbance intensity at plot level
-    for(k in 1:Nplot){
-      Ifire[k] ~ dunif(0, 1)
-      Istorm[k] ~ dunif(0, 1)
-      Iother[k] ~ dunif(0, 1)
-    }
-    
-    
-    
-  }"
-  
-  
-  
-  ## - Fit the model
-  out <- R2jags::jags(data = data_jags.in,
-                      param = c(paste0("c", c(0:8)), "Ifire", "Istorm", "Iother"),
-                      model.file = textConnection(mortality_model_D),
-                      n.chains = n.chains,
-                      n.iter = n.iter,
-                      n.burnin = n.burn,
-                      n.thin = n.thin,
-                      DIC = TRUE, 
-                      progress.bar = "text")
-  
-  return(out)
-}
-
-
-
-#' Fit the mortality model with disturbance event given in the data for several countries
-#' @param data_jags.in List containing all the inputs of the model
-#' @param n.chains numeric: Number of MCMC Markov chains
-#' @param n.iter numeric: Number of iterations
-#' @param n.burn numeric: Burn-in
-#' @param n.thin numeric: Thinning rate
-#' @return A rjags object
-fit_mortality_full_unif_sub_test <- function(data_jags.in, n.chains, n.iter, n.burn, n.thin){
-  
-  ## - Write the model
-  mortality_model_D <- 
-    "model{
-    for (i in 1:Ntrees) {
-    
-      state[i] ~ dcat(proba[i, 1:3])
-      
-      # Probability to observe harvested tree
-      proba[i, 1] = pdDj[i]*phdD[i]
-      
-      # Probability to observe dead tree
-      proba[i, 2] = pdDj[i]*(1 - phdD[i])
-      
-      # Probability to observe alive tree
-      proba[i, 3] = (1 - pdDj[i])
-      
-      # Probability to die in disturbed plots
-      pdDj[i] = 1 - (1 - Dfire[i]*pdfire[i])*(1 - Dstorm[i]*pdstorm[i])*(1 - Dother[i]*pdother[i])
-      
-      # Probability to die from a storm disturbance
-      logit(pstorm[i]) = c0[sp[i]] + (c1[sp[i]]*Istorm[plot[i]]*(dbh[i]^c2[sp[i]])) 
-      pdstorm[i] = 1 - (1 - pstorm[i])^time[i]
-      
-      # Probability to die from an other disturbance
-      logit(pother[i]) = c3[sp[i]] + (c4[sp[i]]*Iother[plot[i]]*(dbh[i]^c5[sp[i]])) 
-      pdother[i] = 1 - (1 - pother[i])^time[i]
-      
-      # Probability to die from a fire disturbance
-      logit(pfire[i]) = c6[sp[i]] + (c7[sp[i]]*Ifire[plot[i]]*(dbh[i]^c8[sp[i]])) 
-      pdfire[i] = 1 - (1 - pfire[i])^time[i]
-    }
-    
-    ## - Priors
-    # Priors at species level
-    for(s in 1:Nspecies){
       c0[s] ~ dnorm(0, 1)
       c1[s] ~ dexp(0.5)
       c2[s] ~ dnorm(0, 1)
@@ -509,6 +451,7 @@ fit_mortality_full_unif_sub_test <- function(data_jags.in, n.chains, n.iter, n.b
       c8[s] ~ dnorm(0, 1)
     }
     
+    
     # Disturbance intensity at plot level
     for(k in 1:Nplot){
       Ifire[k] ~ dunif(0, 1)
@@ -535,3 +478,5 @@ fit_mortality_full_unif_sub_test <- function(data_jags.in, n.chains, n.iter, n.b
   
   return(out)
 }
+
+

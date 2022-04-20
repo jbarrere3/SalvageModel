@@ -67,16 +67,8 @@ list(
   tar_target(data_model_scaled, scale_data_model(data_model, var = c("dbh", "comp", "sgdd", "wai", "DS"))), 
   tar_target(data_model_full_scaled, scale_data_model(data_model_full, var = c("dbh", "comp", "sgdd", "wai", "DS"))),
   
-  # Get parameters for harvest probability
-  tar_target(param_harvest_proba, get_param_harvest_proba(data_model_scaled, Dj_latent = FALSE)),
-  tar_target(param_harvest_proba_full,  get_param_harvest_proba(data_model_full_scaled, Dj_latent = FALSE)),
-  
   # Prepare data as model input
-  tar_target(data_jags_sub, generate_data_jags_sub(data_model_scaled, p = param_harvest_proba)),
-  tar_target(data_jags_full_sub, 
-             generate_data_jags_full_sub(data_model_full_scaled, p = param_harvest_proba_full)),
-  tar_target(data_jags_full_sub_test, 
-             generate_data_jags_full_sub_test(data_model_full_scaled)),
+  tar_target(data_jags_full_sub, generate_data_jags_full_sub(data_model_full_scaled)),
   
   # Simulate some data
   tar_target(parameters_sp, generate_parameters_sp(data_jags_full_sub)),
@@ -87,19 +79,12 @@ list(
   # -- Step 3 - Model fit and output ----
   
   # Fit the jags model
-  # - With France only
-  tar_target(jags.model_sub, fit_mortality_sub(
-    data_jags_sub$data_jags, n.chains = 3, n.iter = 1000, n.burn = 500, n.thin = 1)), 
   # - With France and Spain
   tar_target(jags.model_full_sub, fit_mortality_full_sub(
     data_jags_full_sub$data_jags, n.chains = 3, n.iter = 1000, n.burn = 500, n.thin = 1)), 
   # - With France and Spain and simulated data
-  tar_target(jags.model_full_sub_simulated, fit_mortality_full_sub(
+  tar_target(jags.model_full_sub_simulated, fit_mortality_full_sub_simulated(
     data_jags_full_sub_simulated$data_jags, n.chains = 3, n.iter = 1000, n.burn = 500, n.thin = 1)), 
-  # - Test with harvest probability estimated
-  tar_target(jags.model_full_sub_test, fit_mortality_full_sub_test(
-    data_jags_full_sub_test$data_jags, n.chains = 3, n.iter = 1000, n.burn = 500, n.thin = 1)), 
-  
   
   
   
@@ -110,8 +95,8 @@ list(
   tar_target(fig_convergence_full_sub, plot_convergence(jags.model_full_sub, data_jags_full_sub, BM_equations, 
                                                    "fig/real_data/multispecies_submodel_full/convergence"), 
              format = "file"),
-  tar_target(fig_convergence_full_sub_test, plot_convergence(jags.model_full_sub_test, data_jags_full_sub_test, BM_equations, 
-                                                        "fig/real_data/multispecies_submodel_full_test/convergence"), 
+  tar_target(fig_convergence_full_sub_simulated, plot_convergence(jags.model_full_sub_simulated, data_jags_full_sub_simulated, BM_equations, 
+                                                        "fig/real_data/multispecies_submodel_full_simulated/convergence"), 
              format = "file"),
   
   # Plot parameters per species

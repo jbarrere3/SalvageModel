@@ -196,104 +196,6 @@ scale_data_model <- function(data_model,
 }
 
 
-#' Get parameters harvest probabilities
-#' @param data_model_scaled
-#' @param Dj_latent
-get_param_harvest_proba <- function(data_model_scaled, Dj_latent){
-  
-  # Initialize output
-  out <- list()
-  
-  # Use the right DS depending on Dj_latent
-  if(Dj_latent) data_priorharvest <- data_model_scaled %>% dplyr::select(plotcode, dbh, a, h, D, DS = DS.Senf)
-  else data_priorharvest <- data_model_scaled %>% dplyr::select(plotcode, dbh, a, h, D, DS)
-  
-  # Remove alive trees in disturbed plots
-  data_priorharvest <- data_priorharvest %>%
-    filter(!(a == 1 & D == 1)) %>% 
-    dplyr::select(-a)
-  
-  
-  # Fit model for undisturbed plots
-  mod.undist <- glm(h ~ dbh, 
-                    data = subset(data_priorharvest, D == 0), 
-                    family = binomial(link = "logit"))
-  # Get parameters e0 and e1 (cf. doc Multinomial harvest model)
-  out$e0 <- as.numeric(mod.undist$coefficients[1])
-  out$e1 <- as.numeric(mod.undist$coefficients[2])
-  
-  # Fit model for disturbed plots
-  mod.dist <- glm(h ~ dbh*DS, 
-                  data = subset(data_priorharvest, D == 1), 
-                  family = binomial(link = "logit"))
-  
-  # Get parameters d0, d1, d2 and d3 (cf. doc Multinomial harvest model)
-  out$d0 <- as.numeric(mod.dist$coefficients[1])
-  out$d1 <- as.numeric(mod.dist$coefficients[2])
-  out$d2 <- as.numeric(mod.dist$coefficients[3])
-  out$d3 <- as.numeric(mod.dist$coefficients[4])
-  
-  return(out)
-}
-
-#' generate data for the jags model using real data
-#' @param data dataset where the tree status (dead, alive or harvested) is not simulated
-#' @param p list containing the parameters for the harvest conditional probabilities
-#' @author Björn Reineking, Julien Barrere
-generate_data_jags <- function(data, p = param_harvest_proba){
-  
-  # Replace plotcode by a number
-  plotcode.table <- data.frame(plotcode = unique(data$plotcode), 
-                               plot = c(1:length(unique(data$plotcode))))
-  
-  # Replace species by a number 
-  species.table <- data.frame(species = unique(data$species), 
-                              sp = c(1:length(unique(data$species))))
-  
-  # Format final data
-  data.in <- data %>%
-    # Calculate harvest conditional probabilities
-    mutate(phdD = plogis(p$d0 + p$d1*dbh + p$d2*DS + p$d3*dbh*DS), 
-           phadBM = plogis(p$e0 + p$e1*dbh)) %>%
-    # Add plot code
-    left_join(plotcode.table, by = "plotcode") %>%
-    # Add species code
-    left_join(species.table, by = "species")
-  
-  
-  
-  # Create the output list
-  data_jags <- list(
-    Ntrees = NROW(data.in),
-    Nplot = NROW(plotcode.table), 
-    Nspecies = NROW(species.table),
-    plot = data.in$plot, 
-    sp = data.in$sp,
-    state = apply(dplyr::select(data.in, h, d, a), 1, which.max), 
-    dbh = data.in$dbh,
-    comp = data.in$comp,
-    sgdd = data.in$sgdd,
-    wai = data.in$wai,
-    phdD = data.in$phdD,
-    phadBM = data.in$phadBM, 
-    D = data.in$D, 
-    Dfire = data.in$Dfire, 
-    Dstorm = data.in$Dstorm, 
-    Dother = data.in$Dother,
-    bm1 = data.in$bm1,
-    bm2 = data.in$bm2, 
-    bm3 = data.in$bm3, 
-    bm4 = data.in$bm4, 
-    bm5 = data.in$bm5, 
-    bm6 = data.in$bm6
-  )
-  
-  # Final output
-  out <- list(data_jags, plotcode.table, species.table)
-  names(out) = c("data_jags", "plotcode_table", "species_table")
-  return(out)
-}
-
 
 
 
@@ -302,181 +204,7 @@ generate_data_jags <- function(data, p = param_harvest_proba){
 #' @param data dataset where the tree status (dead, alive or harvested) is not simulated
 #' @param p list containing the parameters for the harvest conditional probabilities
 #' @author Björn Reineking, Julien Barrere
-generate_data_jags_sub <- function(data, p = param_harvest_proba){
-  
-  # Remove undisturbed plots
-  data_sub <- data %>% filter(D == 1)
-  
-  # Replace plotcode by a number
-  plotcode.table <- data.frame(plotcode = unique(data_sub$plotcode), 
-                               plot = c(1:length(unique(data_sub$plotcode))))
-  
-  # Replace species by a number 
-  species.table <- data.frame(species = unique(data_sub$species), 
-                              sp = c(1:length(unique(data_sub$species))))
-  
-  # Identify other-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.other <- (data %>%
-                              filter(Dother == 1) %>%
-                              group_by(plotcode, species) %>%
-                              mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                              summarize(n = n(), n.dead = sum(dead)) %>%
-                              ungroup() %>%
-                              group_by(plotcode) %>%
-                              mutate(prop.species = n/sum(n), 
-                                     prop.species.dead = n.dead/n) %>%
-                              filter(species == "Picea abies" & prop.species == 1 & prop.species.dead == 1))$plotcode 
-  
-  # Identify storm-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.storm <- (data %>%
-                              filter(Dstorm == 1) %>%
-                              group_by(plotcode, species) %>%
-                              mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                              summarize(n = n(), n.dead = sum(dead)) %>%
-                              ungroup() %>%
-                              group_by(plotcode) %>%
-                              mutate(prop.species = n/sum(n), 
-                                     prop.species.dead = n.dead/n) %>%
-                              filter(species == "Picea abies" & prop.species > 0.8 & prop.species.dead == 1))$plotcode
-  
-  # Format final data
-  data.in <- data_sub %>%
-    # Calculate harvest conditional probabilities
-    mutate(phdD = plogis(p$d0 + p$d1*dbh + p$d2*DS + p$d3*dbh*DS)) %>%
-    # Remove (for now) fire disturbance, and only keep storm and other (fire classified as other)
-    mutate(Dother = ifelse(Dfire == 1, 1, Dother)) %>%
-    # Set disturbance intensity for storm and other
-    mutate(Istorm = ifelse(plotcode %in% plots.reference.storm, 0.7, NA_real_),
-           Iother = ifelse(plotcode %in% plots.reference.other, 0.7, NA_real_)) %>%
-    # Add plot code
-    left_join(plotcode.table, by = "plotcode") %>%
-    # Add species code
-    left_join(species.table, by = "species")
-  
-  
-  
-  # Create the output list
-  data_jags <- list(
-    Ntrees = NROW(data.in),
-    Nplot = NROW(plotcode.table), 
-    Nspecies = NROW(species.table),
-    plot = data.in$plot, 
-    sp = data.in$sp,
-    state = apply(dplyr::select(data.in, h, d, a), 1, which.max),
-    time = data.in$time,
-    dbh = data.in$dbh,
-    phdD = data.in$phdD,
-    Dstorm = data.in$Dstorm, 
-    Dother = data.in$Dother, 
-    Istorm = data.in$Istorm, 
-    Iother = data.in$Iother)
-  
-  # Final output
-  out <- list(data_jags, plotcode.table, species.table)
-  names(out) = c("data_jags", "plotcode_table", "species_table")
-  return(out)
-}
-
-
-
-
-#' generate data for the jags model using real data
-#' @param data dataset where the tree status (dead, alive or harvested) is not simulated
-#' @param p list containing the parameters for the harvest conditional probabilities
-#' @author Björn Reineking, Julien Barrere
-generate_data_jags_full_sub <- function(data, p = param_harvest_proba){
-  
-  # Remove undisturbed plots
-  data_sub <- data %>% filter(D == 1)
-  
-  # Replace plotcode by a number
-  plotcode.table <- data.frame(plotcode = unique(data_sub$plotcode), 
-                               plot = c(1:length(unique(data_sub$plotcode))))
-  
-  # Replace species by a number 
-  species.table <- data.frame(species = unique(data_sub$species), 
-                              sp = c(1:length(unique(data_sub$species))))
-  
-  # Identify other-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.other <- (data %>%
-                              filter(Dother == 1) %>%
-                              group_by(plotcode, species) %>%
-                              mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                              summarize(n = n(), n.dead = sum(dead)) %>%
-                              ungroup() %>%
-                              group_by(plotcode) %>%
-                              mutate(prop.species = n/sum(n), 
-                                     prop.species.dead = n.dead/n) %>%
-                              filter(species == "Picea abies" & prop.species == 1 & prop.species.dead == 1))$plotcode 
-  
-  # Identify storm-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.storm <- (data %>%
-                              filter(Dstorm == 1) %>%
-                              group_by(plotcode, species) %>%
-                              mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                              summarize(n = n(), n.dead = sum(dead)) %>%
-                              ungroup() %>%
-                              group_by(plotcode) %>%
-                              mutate(prop.species = n/sum(n), 
-                                     prop.species.dead = n.dead/n) %>%
-                              filter(species == "Picea abies" & prop.species > 0.8 & prop.species.dead == 1))$plotcode
-  
-  # Identify storm-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.fire <- (data %>%
-                             filter(Dfire == 1) %>%
-                             group_by(plotcode, species) %>%
-                             mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                             summarize(n = n(), n.dead = sum(dead)) %>%
-                             ungroup() %>%
-                             group_by(plotcode) %>%
-                             mutate(prop.species = n/sum(n), 
-                                    prop.species.dead = n.dead/n) %>%
-                             filter(species == "Pinus halepensis" & prop.species == 1 & 
-                                      prop.species.dead == 1 & n > 25))$plotcode
-  
-  # Format final data
-  data.in <- data_sub %>%
-    # Calculate harvest conditional probabilities
-    mutate(phdD = plogis(p$d0 + p$d1*dbh + p$d2*DS + p$d3*dbh*DS)) %>%
-    # Set disturbance intensity for storm and other
-    mutate(Ifire = ifelse(plotcode %in% plots.reference.fire, 0.7, NA_real_),
-           Istorm = ifelse(plotcode %in% plots.reference.storm, 0.7, NA_real_),
-           Iother = ifelse(plotcode %in% plots.reference.other, 0.7, NA_real_)) %>%
-    # Add plot code
-    left_join(plotcode.table, by = "plotcode") %>%
-    # Add species code
-    left_join(species.table, by = "species")
-  
-  
-  
-  # Create the output list
-  data_jags <- list(
-    Ntrees = NROW(data.in),
-    Nplot = NROW(plotcode.table), 
-    Nspecies = NROW(species.table),
-    plot = data.in$plot, 
-    sp = data.in$sp,
-    state = apply(dplyr::select(data.in, h, d, a), 1, which.max),
-    time = data.in$time,
-    dbh = data.in$dbh,
-    phdD = data.in$phdD,
-    Dfire = data.in$Dfire, 
-    Dstorm = data.in$Dstorm, 
-    Dother = data.in$Dother, 
-    Ifire = data.in$Ifire, 
-    Istorm = data.in$Istorm, 
-    Iother = data.in$Iother)
-  
-  # Final output
-  out <- list(data_jags, plotcode.table, species.table)
-  names(out) = c("data_jags", "plotcode_table", "species_table")
-  return(out)
-}
-
-#' generate data for the jags model using real data (test with harvest estimated)
-#' @param data dataset where the tree status (dead, alive or harvested) is not simulated
-#' @author Björn Reineking, Julien Barrere
-generate_data_jags_full_sub_test <- function(data){
+generate_data_jags_full_sub <- function(data){
   
   # Remove undisturbed plots
   data_sub <- data %>% filter(D == 1)
@@ -532,6 +260,8 @@ generate_data_jags_full_sub_test <- function(data){
     mutate(Ifire = ifelse(plotcode %in% plots.reference.fire, 0.7, NA_real_),
            Istorm = ifelse(plotcode %in% plots.reference.storm, 0.7, NA_real_),
            Iother = ifelse(plotcode %in% plots.reference.other, 0.7, NA_real_)) %>%
+    # Determine if tree is dead or not
+    mutate(d = ifelse(a == 1, 0, 1)) %>%
     # Add plot code
     left_join(plotcode.table, by = "plotcode") %>%
     # Add species code
@@ -546,7 +276,7 @@ generate_data_jags_full_sub_test <- function(data){
     Nspecies = NROW(species.table),
     plot = data.in$plot, 
     sp = data.in$sp,
-    state = apply(dplyr::select(data.in, h, d, a), 1, which.max),
+    d = data.in$d,
     time = data.in$time,
     dbh = data.in$dbh,
     Dfire = data.in$Dfire, 
@@ -561,6 +291,8 @@ generate_data_jags_full_sub_test <- function(data){
   names(out) = c("data_jags", "plotcode_table", "species_table")
   return(out)
 }
+
+
 
 
 #' Get family and order for each species present in the dataset
@@ -684,7 +416,6 @@ simulate_status_full_sub <- function(data.jags.in, parameters_sp){
                                 sp = data.jags.in$data_jags$sp, 
                                 time = data.jags.in$data_jags$time, 
                                 dbh = data.jags.in$data_jags$dbh, 
-                                phdD = data.jags.in$data_jags$phdD, 
                                 Dfire = data.jags.in$data_jags$Dfire, 
                                 Dstorm = data.jags.in$data_jags$Dstorm, 
                                 Dother = data.jags.in$data_jags$Dother) %>%
@@ -696,14 +427,11 @@ simulate_status_full_sub <- function(data.jags.in, parameters_sp){
     mutate(pdstorm = 1 - (1 - plogis(c0 + c1*Istorm*dbh^c2))^time, 
            pdother = 1 - (1 - plogis(c3 + c4*Iother*dbh^c5))^time, 
            pdfire = 1 - (1 - plogis(c6 + c7*Ifire*dbh^c8))^time, 
-           pdDj = 1 - (1 - Dstorm*pdstorm)*(1 - Dother*pdother)*(1 - Dfire*pdfire), 
-           ph = phdD*pdDj, 
-           pd = (1 - phdD)*pdDj, 
-           pa = 1 - pdDj)
+           pdD = 1 - (1 - Dstorm*pdstorm)*(1 - Dother*pdother)*(1 - Dfire*pdfire), 
+           d = NA_integer_)
   
-  # Multinational realization of tree state - we have to call rmultinom for each tree separately
-  hda <- t(apply(newstatus.table[, c("ph", "pd", "pa")], 1, function(x) rmultinom(n = 1, size = 1, prob = x)))
-  colnames(hda) <- c("h", "d", "a")
+  # death probability
+  for(i in 1:dim(newstatus.table)[1]) newstatus.table$d[i] <- rbinom(1, 1, newstatus.table$pdD[i])
   
   # Final output
   out <- data.jags.in
@@ -712,7 +440,7 @@ simulate_status_full_sub <- function(data.jags.in, parameters_sp){
   out$data_jags$Iother = newstatus.table$Iother
   out$data_jags$Ifire = newstatus.table$Ifire
   # Add tree status
-  out$data_jags$state <- apply(hda, 1, which.max)
+  out$data_jags$d <- newstatus.table$d
   
   return(out)
 }

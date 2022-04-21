@@ -155,8 +155,10 @@ plot_disturbed_trees_per_species <- function(data_model, file.in){
 #' @param jags.model rjags object
 #' @param data_jags input used for the jags model
 #' @param BM_equations dataframe indicating which background mortality to use per species
+#' @param disturbance_species_info information on which disturbance affected which species
 #' @param dir.in Path where to save the plot
-plot_convergence <- function(jags.model, data_jags, BM_equations, dir.in){
+plot_convergence <- function(jags.model, data_jags, BM_equations, disturbance_species_info, 
+                             dir.in){
   
   # Initialize output
   out <- c()
@@ -164,48 +166,62 @@ plot_convergence <- function(jags.model, data_jags, BM_equations, dir.in){
   # Species included in the simulations
   species.in <- data_jags$species_table$species
   
+  # Species for which we have enough disturbed trees
+  species.to.keep.in <- (data.frame(ID = disturbance_species_info$species_parameter_to_keep) %>%
+                           mutate(species = gsub("\\..+", "", ID)) %>%
+                           dplyr::select(-ID) %>%
+                           distinct())$species
+  
   # Vector storing all parameters extracted
   params <- c()
     
   # Loop on all species
   for(i in 1:length(species.in)){
     
-    # Create directories if needed
-    file.in.i <- paste0(dir.in, "/fig_convergence_", gsub(" ", "-", species.in[i]), ".png")
-    create_dir_if_needed(file.in.i)
-    # Add to the output
-    out <- c(out, file.in.i)
+    # Only make the figure if the species have been sufficiently exposed to 
+    # to at least one disturbance
+    if(species.in[i] %in% species.to.keep.in){
+      # Create directories if needed
+      file.in.i <- paste0(dir.in, "/fig_convergence_", gsub(" ", "-", species.in[i]), ".png")
+      create_dir_if_needed(file.in.i)
+      # Add to the output
+      out <- c(out, file.in.i)
+      
+      ## - Identify the columns to extract
+      # Get the species code
+      species.code.in <- data_jags$species_table$sp[i]
+      # Get the list of parameters based on the bm equation of the species
+      bm.in <- ifelse((species.in[i] %in% BM_equations$species), 
+                      BM_equations$BM_eq[which(BM_equations$species == species.in[i])], 1) 
+      if(bm.in == 1) params.in <- c(paste0("b", c(0:5)), paste0("c", c(0:9)))
+      if(bm.in == 2) params.in <- c(paste0("b", c(0:9)), paste0("c", c(0:9)))
+      if(bm.in == 3) params.in <- c(paste0("b", c(0:11)), paste0("c", c(0:9)))
+      if(bm.in == 4) params.in <- c(paste0("b", c(0:7)), paste0("c", c(0:9)))
+      if(bm.in == 5) params.in <- c(paste0("b", c(0:11)), paste0("c", c(0:9)))
+      if(bm.in == 6) params.in <- c(paste0("b", c(0:13)), paste0("c", c(0:9)))
+      # Add the species code to have the complete list of columns to sample
+      params.in <- paste0(params.in, "[", species.code.in, "]")
+      params <- c(params, params.in)
+      
+      ## - Make the plot
+      plot.i <- ggs(as.mcmc(jags.model)) %>%
+        filter(Parameter %in% params.in) %>%
+        mutate(Parameter = gsub(paste0("\\[", species.code.in, "\\]"), "", Parameter), 
+               Chain = as.factor(Chain), 
+               ID = paste(species.in[i], Parameter, sep = "."), 
+               value = ifelse(ID %in% disturbance_species_info$species_parameter_to_keep, value, NA_real_)) %>%
+        ggplot(aes(x = Iteration, y = value, colour = Chain, group = Chain)) + 
+        geom_line() + 
+        facet_wrap(~ Parameter, scales = "free") + 
+        scale_color_manual(values = c("#335C67", "#E09F3E", "#9E2A2B")) +
+        theme_bw() + 
+        ggtitle(species.in[i])
+      
+      ## - Save the plot
+      ggsave(file.in.i, plot.i, width = 17, height = 12, units = "cm", dpi = 600)
+    }
     
-    ## - Identify the columns to extract
-    # Get the species code
-    species.code.in <- data_jags$species_table$sp[i]
-    # Get the list of parameters based on the bm equation of the species
-    bm.in <- ifelse((species.in[i] %in% BM_equations$species), 
-                    BM_equations$BM_eq[which(BM_equations$species == species.in[i])], 1) 
-    if(bm.in == 1) params.in <- c(paste0("b", c(0:5)), paste0("c", c(0:9)))
-    if(bm.in == 2) params.in <- c(paste0("b", c(0:9)), paste0("c", c(0:9)))
-    if(bm.in == 3) params.in <- c(paste0("b", c(0:11)), paste0("c", c(0:9)))
-    if(bm.in == 4) params.in <- c(paste0("b", c(0:7)), paste0("c", c(0:9)))
-    if(bm.in == 5) params.in <- c(paste0("b", c(0:11)), paste0("c", c(0:9)))
-    if(bm.in == 6) params.in <- c(paste0("b", c(0:13)), paste0("c", c(0:9)))
-    # Add the species code to have the complete list of columns to sample
-    params.in <- paste0(params.in, "[", species.code.in, "]")
-    params <- c(params, params.in)
     
-    ## - Make the plot
-    plot.i <- ggs(as.mcmc(jags.model)) %>%
-      filter(Parameter %in% params.in) %>%
-      mutate(Parameter = gsub(paste0("\\[", species.code.in, "\\]"), "", Parameter), 
-             Chain = as.factor(Chain)) %>%
-      ggplot(aes(x = Iteration, y = value, colour = Chain, group = Chain)) + 
-      geom_line() + 
-      facet_wrap(~ Parameter, scales = "free") + 
-      scale_color_manual(values = c("#335C67", "#E09F3E", "#9E2A2B")) +
-      theme_bw() + 
-      ggtitle(species.in[i])
-    
-    ## - Save the plot
-    ggsave(file.in.i, plot.i, width = 17, height = 12, units = "cm", dpi = 600)
     
   }
   
@@ -267,8 +283,10 @@ plot_parameters_per_species <- function(jags.model, data_jags, file.in){
 #' Plot harvest probability depending on dbh, disturbance and land property
 #' @param jags.model rjags object
 #' @param data_jags input used for the jags model
+#' @param disturbance_species_info information on which disturbance affected which species
 #' @param file.in Path and file where to save the plot
-plot_parameters_per_species_full <- function(jags.model, data_jags, file.in){
+plot_parameters_per_species_full <- function(jags.model, data_jags, disturbance_species_info, 
+                                             file.in){
   
   ## - Create directories if needed
   create_dir_if_needed(file.in)
@@ -288,6 +306,9 @@ plot_parameters_per_species_full <- function(jags.model, data_jags, file.in){
     group_by(species, Parameter) %>%
     summarize(mean = mean(value), 
               sd = sd(value)) %>%
+    mutate(ID = paste(species, Parameter, sep = ".")) %>%
+    filter(ID %in% c(disturbance_species_info$species_parameter_to_keep, 
+                     paste0(".PRIOR.c", c(0:8)))) %>%
     mutate(type = ifelse(species == ".PRIOR", "prior", "species")) %>%
     ggplot(aes(x = species, y = mean, color = type)) + 
     geom_errorbar(aes(ymin = mean - sd, ymax = mean+sd), 
@@ -314,8 +335,10 @@ plot_parameters_per_species_full <- function(jags.model, data_jags, file.in){
 #' @param jags.model rjags object
 #' @param data_jags input used for the jags model
 #' @param parameters_sp table containing the true parameters value by species
+#' @param disturbance_species_info information on which disturbance affected which species
 #' @param file.in Path and file where to save the plot
-plot_parameters_true_vs_estimated <- function(jags.model, data_jags, parameters_sp, file.in){
+plot_parameters_true_vs_estimated <- function(jags.model, data_jags, parameters_sp, 
+                                              disturbance_species_info, file.in){
   
   ## - Create directories if needed
   create_dir_if_needed(file.in)
@@ -343,6 +366,8 @@ plot_parameters_true_vs_estimated <- function(jags.model, data_jags, parameters_
                  mutate(ID = paste(species, Parameter, sep = ".")) %>%
                  dplyr::select(ID, value.true)), 
               by = "ID") %>%
+    filter(ID %in% c(disturbance_species_info$species_parameter_to_keep, 
+                     paste0(".PRIOR.c", c(0:8)))) %>%
     ggplot(aes(x = species, y = mean, color = type)) + 
     geom_errorbar(aes(ymin = mean - sd, ymax = mean+sd), 
                   width = 0)  + 
@@ -350,7 +375,7 @@ plot_parameters_true_vs_estimated <- function(jags.model, data_jags, parameters_
     geom_point(aes(y = value.true), inherit.aes = TRUE, color = "blue", size = 1) +
     coord_flip() + 
     scale_color_manual(values = c("red", "black")) +
-    facet_wrap(~ Parameter, scales = "free_x", nrow = 1) + 
+    facet_wrap(~ Parameter, nrow = 1) + 
     ylab("Parameter value") + xlab("") +
     theme(legend.position = "none", 
           axis.line=element_line(), 
@@ -360,7 +385,7 @@ plot_parameters_true_vs_estimated <- function(jags.model, data_jags, parameters_
   
   
   ## - save the plot
-  ggsave(file.in, plot.out, width = 21, height = 7, units = "cm", dpi = 600)
+  ggsave(file.in, plot.out, width = 21, height = 9, units = "cm", dpi = 600)
   return(file.in)
   
 }
@@ -378,7 +403,8 @@ plot_parameters_true_vs_estimated <- function(jags.model, data_jags, parameters_
 #' @param data_model Tree data formatted for the IPM. 
 #' @param data_model_scaled Tree data formatted for the IPM and scaled 
 #' @param dir.in Path where to save the plot
-plot_prediction_full <- function(jags.model, data_jags, data_model_scaled, data_model, dir.in){
+plot_prediction_full <- function(jags.model, data_jags, data_model_scaled, data_model, 
+                                 disturbance_species_info, dir.in){
   
   # Initialize output
   out <- paste0(dir.in, c("/storm", "/other", "/fire"), ".png")
@@ -407,6 +433,11 @@ plot_prediction_full <- function(jags.model, data_jags, data_model_scaled, data_
                                Intensity = c(0.2, 0.4, 0.6, 0.8, 1)) %>%
     mutate(dbh.scaled = predict(scale_dbh, newdata = .)) %>%
     left_join(param_per_species, by = "species") %>%
+    gather(key = "Parameter", value = "value", paste0("c", c(0:8))) %>%
+    mutate(ID = paste(species, Parameter, sep = "."), 
+           value = ifelse(ID %in% disturbance_species_info$species_parameter_to_keep, value, NA_real_)) %>%
+    dplyr::select(-ID) %>%
+    spread(key = Parameter, value = value) %>%
     mutate(pdstorm = plogis(c0 + c1*Intensity*dbh.scaled^c2), 
            pdother = plogis(c3 + c4*Intensity*dbh.scaled^c5), 
            pdfire = plogis(c6 + c7*Intensity*dbh.scaled^c8)) 

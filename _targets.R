@@ -81,55 +81,44 @@ list(
   # Fit the jags model
   # - With France and Spain
   tar_target(jags.model_full_sub, fit_mortality_full_sub(
-    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 1000, n.burn = 500, n.thin = 1)), 
+    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 100, n.burn = 10, n.thin = 1)), 
   # - With France and Spain and simulated data
   tar_target(jags.model_full_sub_simulated, fit_mortality_full_sub_simulated(
-    data_jags_full_sub_simulated$data_jags, n.chains = 3, n.iter = 1000, n.burn = 500, n.thin = 1)), 
+    data_jags_full_sub_simulated$data_jags, n.chains = 3, n.iter = 100, n.burn = 10, n.thin = 1)), 
   
   
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # -- Step 4 - Plot model outputs ----
   
+  # Extract information on how disturbances affect each species (so that parameters that can't be estimated are not shown)
+  tar_target(disturbance_species_info, get_disturbance_species_info(data_model_full)),
+  
   # Plot convergence 
   tar_target(fig_convergence_full_sub, plot_convergence(jags.model_full_sub, data_jags_full_sub, BM_equations, 
-                                                   "fig/real_data/multispecies_submodel_full/convergence"), 
+                                                        disturbance_species_info, "fig/real_data/multispecies_submodel_full/convergence"), 
              format = "file"),
   tar_target(fig_convergence_full_sub_simulated, plot_convergence(jags.model_full_sub_simulated, data_jags_full_sub_simulated, BM_equations, 
-                                                        "fig/real_data/multispecies_submodel_full_simulated/convergence"), 
+                                                                  disturbance_species_info, "fig/simulated_data/multispecies_submodel_full/convergence"), 
              format = "file"),
   
-  # Plot parameters per species
-  tar_target(fig_param_per_species_full, plot_parameters_per_species_full(jags.model_full_sub, data_jags_full_sub, 
-                                                                "fig/real_data/multispecies_submodel_full/parameters_per_sp.png"), 
+  # Plot parameters per species for real data
+  tar_target(fig_param_per_species_full, plot_parameters_per_species_full(jags.model_full_sub, data_jags_full_sub, disturbance_species_info, 
+                                                                          "fig/real_data/multispecies_submodel_full/parameters_per_sp.png"), 
              format = "file"),
   
   # Plot true vs estimated parameters for simulated data
   tar_target(fig_param_true_vs_estimated, plot_parameters_true_vs_estimated(
     jags.model_full_sub_simulated, data_jags_full_sub_simulated, parameters_sp, 
-    "fig/simulated_data/multispecies_submodel_full/true_vs_estimated.png"), 
+    disturbance_species_info, "fig/simulated_data/multispecies_submodel_full/true_vs_estimated.png"), 
     format = "file"),
   
   # Plot the predictions of the model
   tar_target(fig_prediction_full, plot_prediction_full(jags.model_full_sub, data_jags_full_sub, data_model_full_scaled, data_model_full,
-                                                       "fig/real_data/multispecies_submodel_full/predictions"), 
+                                                       disturbance_species_info, "fig/real_data/multispecies_submodel_full/predictions"), 
              format = "file"),
   
-  #tar_target(fig_prediction_full_test, plot_prediction_full(jags.model_full_sub_test, data_jags_full_sub_test, data_model_full_scaled, data_model_full,
-   #                                                    "fig/real_data/multispecies_submodel_full_test/predictions"), 
-    #         format = "file"),
-  
-  # Plot disturbance severity vs intensity
-  #tar_target(fig_intensity_vs_severity, 
-   #          plot_intensity_vs_severity(jags.model_full_sub, data_jags_full_sub, 
-    #                                    "fig/real_data/multispecies_submodel_full/intensity_vs_severity.png"), 
-     #        format = "file"),
-  #tar_target(fig_intensity_vs_severity_test, 
-   #          plot_intensity_vs_severity(jags.model_full_sub_test, data_jags_full_sub, 
-    #                                    "fig/real_data/multispecies_submodel_full_test/intensity_vs_severity.png"), 
-        #     format = "file"),
-  
-  
+
   
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

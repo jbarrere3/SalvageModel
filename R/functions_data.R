@@ -365,7 +365,7 @@ generate_parameters_sp <- function(data.jags.in, param = paste0("c", c(0:8))){
     } 
     # multiplicative parameter
     if(param[i] %in% c("c1", "c4", "c7")){
-      out$value <- round(rnorm(dim(out)[1], mean = 3.5, sd = 0.5), digits = 1)
+      out$value <- round(rexp(dim(out)[1], 1.5), digits = 3)
     } 
     # power parameter
     if(param[i] %in% c("c2", "c5", "c8")){
@@ -440,6 +440,51 @@ simulate_status_full_sub <- function(data.jags.in, parameters_sp){
   out$data_jags$Ifire = newstatus.table$Ifire
   # Add tree status
   out$data_jags$d <- newstatus.table$d
+  
+  return(out)
+}
+
+
+
+#' Get info on which species are affected by which disturbance, 
+#' and thus which parameters per species to keep as "robust"
+#' @param data_model dataset formatted to fit the model
+#' @return a list with two elements: 
+#'         - species_disturbance_table: table giving the n of indiv and 
+#'           plot per species affected by each type of disturbance
+#'         - species_parameter_to_keep is a vector of species-parameter combination with enough
+#'           plots and individuals
+get_disturbance_species_info <- function(data_model){
+  
+  # Initialize output
+  out <- list()
+  
+  # Table indicating the number of individuals per species affected by each type of disturbance
+  out$species_disturbance_table <- data_model %>%
+    gather(key = "disturbance.type", value = "dist.present", "Dfire", "Dother", "Dstorm") %>%
+    filter(dist.present == 1) %>%
+    mutate(disturbance.type = gsub("D", "", disturbance.type)) %>%
+    group_by(disturbance.type, species, plotcode) %>%
+    summarize(n.indiv.per.plot = n()) %>%
+    group_by(disturbance.type, species) %>%
+    summarize(n.indiv = sum(n.indiv.per.plot), 
+              n.plot = n()) 
+  
+  # Vector of species - parameter combination to keep
+  out$species_parameter_to_keep <- (out$species_disturbance_table %>%
+                                      filter(n.indiv > 200 & n.plot > 20) %>%
+                                      mutate(c0 = ifelse(disturbance.type == "storm", 1, 0), 
+                                             c1 = ifelse(disturbance.type == "storm", 1, 0), 
+                                             c2 = ifelse(disturbance.type == "storm", 1, 0), 
+                                             c3 = ifelse(disturbance.type == "other", 1, 0), 
+                                             c4 = ifelse(disturbance.type == "other", 1, 0), 
+                                             c5 = ifelse(disturbance.type == "other", 1, 0), 
+                                             c6 = ifelse(disturbance.type == "fire", 1, 0), 
+                                             c7 = ifelse(disturbance.type == "fire", 1, 0), 
+                                             c8 = ifelse(disturbance.type == "fire", 1, 0)) %>%
+                                      gather(key = "Parameter", value = "Present", paste0("c", c(0:8))) %>%
+                                      filter(Present == 1) %>%
+                                      mutate(ID = paste(species, Parameter, sep = ".")))$ID
   
   return(out)
 }

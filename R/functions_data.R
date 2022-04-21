@@ -394,13 +394,12 @@ simulate_status_full_sub <- function(data.jags.in, parameters_sp){
   
   # plot table extended with disturbance intensity
   plot.table.extended <- data.frame(plot = data.jags.in$data_jags$plot, 
-                                    state = data.jags.in$data_jags$state, 
+                                    d = data.jags.in$data_jags$d, 
                                     Dfire = data.jags.in$data_jags$Dfire, 
                                     Dstorm = data.jags.in$data_jags$Dstorm, 
                                     Dother = data.jags.in$data_jags$Dother) %>%
-    mutate(dead = ifelse(state == 3, 0, 1)) %>%
     group_by(plot, Dfire, Dstorm, Dother) %>%
-    summarise(severity = sum(dead)/n()) %>%
+    summarise(severity = sum(d)/n()) %>%
     mutate(Intensity = severity + rnorm(1, -0.05, 0.05),
            Intensity.corrected = case_when(Intensity < 0 ~ -Intensity, 
                                            Intensity > 1 ~ 1 - 2*(Intensity - 1), 

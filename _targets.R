@@ -81,10 +81,10 @@ list(
   # Fit the jags model
   # - With France and Spain
   tar_target(jags.model_full_sub, fit_mortality_full_sub(
-    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 1000, n.burn = 200, n.thin = 1)), 
+    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)), 
   # - With France and Spain and simulated data
   tar_target(jags.model_full_sub_simulated, fit_mortality_full_sub_simulated(
-    data_jags_full_sub_simulated$data_jags, n.chains = 3, n.iter = 1000, n.burn = 200, n.thin = 1)), 
+    data_jags_full_sub_simulated$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)), 
   
   
   

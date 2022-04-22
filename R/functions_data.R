@@ -472,7 +472,7 @@ get_disturbance_species_info <- function(data_model){
   
   # Vector of species - parameter combination to keep
   out$species_parameter_to_keep <- (out$species_disturbance_table %>%
-                                      filter(n.indiv > 200 & n.plot > 20) %>%
+                                      filter(n.indiv > 150 & n.plot > 15) %>%
                                       mutate(c0 = ifelse(disturbance.type == "storm", 1, 0), 
                                              c1 = ifelse(disturbance.type == "storm", 1, 0), 
                                              c2 = ifelse(disturbance.type == "storm", 1, 0), 

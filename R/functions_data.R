@@ -361,11 +361,11 @@ generate_parameters_sp <- function(data.jags.in, param = paste0("c", c(0:8))){
   for(i in 1:length(param)){
     # intercept
     if(param[i] %in% c("c0", "c3", "c6")){
-      out$value <- round(rnorm(dim(out)[1], mean = -4, sd = 0.5), digits = 1)
+      out$value <- round(runif(dim(out)[1], -6, -4), digits = 3)
     } 
     # multiplicative parameter
     if(param[i] %in% c("c1", "c4", "c7")){
-      out$value <- round(rexp(dim(out)[1], 1.5), digits = 3)
+      out$value <- round(runif(dim(out)[1], 3, 6), digits = 3)
     } 
     # power parameter
     if(param[i] %in% c("c2", "c5", "c8")){
@@ -376,6 +376,7 @@ generate_parameters_sp <- function(data.jags.in, param = paste0("c", c(0:8))){
   }
   return(out)
 }
+
 
 
 
@@ -400,13 +401,22 @@ simulate_status_full_sub <- function(data.jags.in, parameters_sp){
                                     Dother = data.jags.in$data_jags$Dother) %>%
     group_by(plot, Dfire, Dstorm, Dother) %>%
     summarise(severity = sum(d)/n()) %>%
-    mutate(Intensity = severity + rnorm(1, -0.05, 0.05),
-           Intensity.corrected = case_when(Intensity < 0 ~ -Intensity, 
-                                           Intensity > 1 ~ 1 - 2*(Intensity - 1), 
-                                           TRUE ~ Intensity), 
-           Ifire = Dfire*Intensity.corrected, 
-           Istorm = Dstorm*Intensity.corrected, 
-           Iother = Dother*Intensity.corrected) %>%
+    ungroup() %>%
+    mutate(Intensity.fire = rbeta(dim(.)[1], 0.66, 0.36),
+           Intensity.fire = case_when(Intensity.fire < 0.001 ~ 0.001, 
+                                      Intensity.fire > 0.999 ~ 0.999, 
+                                      TRUE ~ Intensity.fire), 
+           Intensity.storm = rbeta(dim(.)[1], 0.65, 2.66),
+           Intensity.storm = case_when(Intensity.storm < 0.001 ~ 0.001, 
+                                       Intensity.storm > 0.999 ~ 0.999, 
+                                      TRUE ~ Intensity.storm), 
+           Intensity.other = rbeta(dim(.)[1], 0.48, 1.77),
+           Intensity.other = case_when(Intensity.other < 0.001 ~ 0.001, 
+                                       Intensity.other > 0.999 ~ 0.999, 
+                                      TRUE ~ Intensity.other), 
+           Ifire = Dfire*Intensity.fire, 
+           Istorm = Dstorm*Intensity.storm, 
+           Iother = Dother*Intensity.other) %>%
     ungroup() %>%
     dplyr::select(plot, Ifire, Istorm, Iother)
   
@@ -443,6 +453,9 @@ simulate_status_full_sub <- function(data.jags.in, parameters_sp){
   
   return(out)
 }
+
+
+
 
 
 
@@ -488,3 +501,6 @@ get_disturbance_species_info <- function(data_model){
   
   return(out)
 }
+
+
+

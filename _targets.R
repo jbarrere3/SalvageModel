@@ -84,7 +84,7 @@ list(
     data_jags_full_sub$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)), 
   # - With France and Spain and simulated data
   tar_target(jags.model_full_sub_simulated, fit_mortality_full_sub_simulated(
-    data_jags_full_sub_simulated$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)), 
+    data_jags_full_sub_simulated$data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 1)), 
   
   
   
@@ -112,6 +112,10 @@ list(
     jags.model_full_sub_simulated, data_jags_full_sub_simulated, parameters_sp, 
     disturbance_species_info, "fig/simulated_data/multispecies_submodel_full/true_vs_estimated.png"), 
     format = "file"),
+  tar_target(fig_param_true_vs_estimated2, plot_parameters_true_vs_estimated2(
+    jags.model_full_sub_simulated, data_jags_full_sub_simulated, parameters_sp, 
+    disturbance_species_info, "fig/simulated_data/multispecies_submodel_full/true_vs_estimated2.png"), 
+    format = "file"),
   
   # Plot the predictions of the model
   tar_target(fig_prediction_full, plot_prediction_full(jags.model_full_sub, data_jags_full_sub, data_model_full_scaled, data_model_full,
@@ -119,8 +123,6 @@ list(
              format = "file"),
   
 
-  
-  
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # -- Step 5 - Exploratory plots ----
   

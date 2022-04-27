@@ -392,6 +392,69 @@ plot_parameters_true_vs_estimated <- function(jags.model, data_jags, parameters_
 
 
 
+#' Plot estimated vs true parameter value (+ prior) in the case of a model ran with simulated data
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param parameters_sp table containing the true parameters value by species
+#' @param disturbance_species_info information on which disturbance affected which species
+#' @param file.in Path and file where to save the plot
+plot_parameters_true_vs_estimated2 <- function(jags.model, data_jags, parameters_sp, 
+                                              disturbance_species_info, file.in){
+  
+  ## - Create directories if needed
+  create_dir_if_needed(file.in)
+  
+  ## - make the plot
+  plot.out <- ggs(as.mcmc(jags.model)) %>%
+    filter(Parameter != "deviance") %>%
+    mutate(sp = as.integer(gsub("\\]", "", gsub(".+\\[", "", Parameter))), 
+           Parameter = gsub("\\[.+\\]", "", Parameter)) %>%
+    left_join(data_jags$species_table, by = "sp") %>% 
+    dplyr::select(-sp) %>%
+    spread(key = species, value = value) %>%
+    mutate(.PRIOR = case_when(Parameter %in% c("c0", "c3", "c6", "c2", "c5", "c8", "c9", "c10") ~ rnorm(nrow(.), 0, 1), 
+                              Parameter %in% c("c1", "c4", "c7") ~ rexp(nrow(.), 0.5), 
+                              TRUE ~ NA_real_)) %>%
+    gather(key = "species", value = "value", c(unique(data_jags$species_table$species), ".PRIOR")) %>%
+    group_by(species, Parameter) %>%
+    summarize(mean = mean(value), 
+              sd = sd(value)) %>%
+    mutate(type = ifelse(species == ".PRIOR", "prior", "species")) %>%
+    mutate(ID = paste(species, Parameter, sep = ".")) %>%
+    left_join((data_jags$species_table %>%
+                 left_join(parameters_sp, by = "sp") %>%
+                 gather(key = "Parameter", value = "value.true", 
+                        colnames(.)[which(colnames(.) %in% paste0("c", c(0:11)))]) %>%
+                 mutate(ID = paste(species, Parameter, sep = ".")) %>%
+                 dplyr::select(ID, value.true)), 
+              by = "ID") %>%
+    filter(ID %in% c(disturbance_species_info$species_parameter_to_keep, 
+                     paste0(".PRIOR.c", c(0:11)))) %>%
+    filter(type != "prior") %>%
+    mutate(Parameter = factor(
+      Parameter, levels = paste0("c", c(0:11))[which(paste0("c", c(0:11)) %in% unique(.$Parameter))])) %>%
+    ggplot(aes(x = value.true, y = mean, fill = species)) + 
+    geom_errorbar(aes(ymin = mean - sd, ymax = mean+sd), 
+                  width = 0)  + 
+    geom_point(size = 1, shape = 21, color = "black") + 
+    geom_abline(intercept = 0, slope = 1) +
+    facet_wrap(~ Parameter, scales = "free") + 
+    ylab("Estimated parameter value") + xlab("True parameter value") +
+    theme(panel.background = element_rect(color = "black", fill = "white"), 
+          strip.background = element_blank(), 
+          panel.grid = element_blank(), 
+          legend.title = element_blank(),
+          legend.text = element_text(size = 7, face = "italic"),
+          legend.key = element_rect(fill = alpha("white", 0.0))) 
+  
+  
+  ## - save the plot
+  ggsave(file.in, plot.out, width = 23, height = 14, units = "cm", dpi = 600)
+  return(file.in)
+  
+}
+
+
 
 
 

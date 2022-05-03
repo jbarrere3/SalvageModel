@@ -21,7 +21,8 @@ library(targets)
 # Load functions
 lapply(grep("R$", list.files("R"), value = TRUE), function(x) source(file.path("R", x)))
 # install if needed and load packages
-packages.in <- c("dplyr", "ggplot2", "RCurl", "httr", "tidyr", "data.table", "sp", "R2jags", "ggmcmc", "taxize")
+packages.in <- c("dplyr", "ggplot2", "RCurl", "httr", "tidyr", "data.table", "sp", "R2jags", 
+                 "ggmcmc", "taxize", "rnaturalearth", "ggspatial", "sf", "ggnewscale")
 for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.packages()))) install.packages(packages.in[i])
 # Targets options
 options(tidyverse.quiet = TRUE, clustermq.scheduler = "multiprocess")
@@ -81,10 +82,12 @@ list(
   # Fit the jags model
   # - With France and Spain
   tar_target(jags.model_full_sub, fit_mortality_full_sub(
-    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)), 
+    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1, param.in = paste0("c", c(0:8)))), 
+  tar_target(jags.model_full_sub_I, fit_mortality_full_sub(
+    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 10, param.in = c("Istorm", "Ifire", "Iother"))), 
   # - With France and Spain and simulated data
   tar_target(jags.model_full_sub_simulated, fit_mortality_full_sub_simulated(
-    data_jags_full_sub_simulated$data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 1)), 
+    data_jags_full_sub_simulated$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)), 
   
   
   
@@ -122,13 +125,27 @@ list(
                                                        disturbance_species_info, "fig/real_data/multispecies_submodel_full/predictions"), 
              format = "file"),
   
-
+  # Estimated intensity vs severity
+  tar_target(fig_intensity_vs_severity, plot_intensity_vs_severity(
+    jags.model_full_sub_I, data_jags_full_sub, "fig/real_data/multispecies_submodel_full/intensity_vs_severity.png"), 
+    format = "file"),
+  tar_target(fig_map_intensity_and_severity, map_intensity_and_severity(
+    jags.model_full_sub_I, data_jags_full_sub, FUNDIV_plot, 
+    "fig/real_data/multispecies_submodel_full/map_intensity_and_severity.png"), 
+    format = "file"),
+  
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # -- Step 5 - Exploratory plots ----
   
   tar_target(fig_disturbed_trees_per_species, 
              plot_disturbed_trees_per_species(data_model_full, "fig/exploratory/disturbed_trees_per_species.png"), 
-             format = "file")
+             format = "file"), 
+  tar_target(fig_sgdd_species_disturbance, plot_climate_per_species_per_disturbance(
+    data_model_full, "sgdd", "fig/exploratory/sgdd_species_disturbance.png"), 
+    format = "file"), 
+  tar_target(fig_wai_species_disturbance, plot_climate_per_species_per_disturbance(
+    data_model_full, "wai", "fig/exploratory/wai_species_disturbance.png"), 
+    format = "file")
   
   
   

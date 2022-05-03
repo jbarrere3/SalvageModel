@@ -6,7 +6,7 @@
 #' @name functions_data.R  
 #' @description R script containing all functions relative to data
 #               importation and formatting
-#' @author Lukas Heiland (re-arranged by Julien BARRERE)
+#' @author Julien BARRERE
 #
 #
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

@@ -146,6 +146,52 @@ plot_disturbed_trees_per_species <- function(data_model, file.in){
 
 
 
+#' Plot climatic range of each species per disturbance type
+#' @param data_model tree level dataset with the variables necessary for the model
+#' @param var.in climatic variable to plot (either sgdd or wai)
+#' @param file.in Path and file where to save the plot
+plot_climate_per_species_per_disturbance <- function(data_model, var.in, file.in){
+  
+  ## - Create directories if needed
+  create_dir_if_needed(file.in)
+  
+  ## - make the plot
+  data.plot <- data_model %>%
+    filter(D == 1) %>%
+    dplyr::select("species", var.in, "Dfire", "Dstorm", "Dother") %>%
+    gather(key = "disturbance", value = "present", "Dfire", "Dstorm", "Dother") %>%
+    filter(present == 1) %>%
+    mutate(disturbance = gsub("D", "", disturbance)) %>%
+    rename("climate" = var.in) %>%
+    group_by(species, disturbance) %>%
+    summarize(min = min(climate), 
+              mean = mean(climate), 
+              max = max(climate), 
+              label = paste0("(", n(), ")")) 
+  plot.out <- data.plot %>%
+    ggplot(aes(x = species, y = mean, ymin = min, ymax = max)) + 
+    geom_errorbar(width = 0) +
+    geom_point() + 
+    geom_text(aes(y = (max + max(data.plot$max)*0.15), label = label), 
+              inherit.aes = TRUE, size = 3) +
+    facet_wrap(~ disturbance, scales = "free_x") + 
+    coord_flip() + 
+    theme(panel.background = element_rect(color = "black", fill = "white"), 
+          strip.background = element_blank(), 
+          panel.grid = element_blank(), 
+          strip.text = element_text(face = "bold")) + 
+    ylab(paste0(var.in, " range")) + 
+    xlab("") + 
+    ylim(min(data.plot$min), max(data.plot$max)*1.3)
+  
+  
+  ## - save the plot
+  ggsave(file.in, plot.out, width = 20, height = 10, units = "cm", dpi = 600)
+  return(file.in)
+  
+}
+
+
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## 3. Diagnostic plots ------------
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -577,8 +623,7 @@ plot_intensity_vs_severity <- function(jags.model, data_jags, file.in){
                            intensity.sd = sd(value, na.rm = T))), 
               by = "Parameter") %>%
     left_join((data.frame(plot = data_jags$data_jags$plot, 
-                          state = data_jags$data_jags$state) %>%
-                 mutate(dead = ifelse(state == 3, 0, 1)) %>%
+                          dead = data_jags$data_jags$d) %>%
                  group_by(plot) %>%
                  summarize(severity = sum(dead)/n())), 
               by = "plot") %>%
@@ -600,6 +645,83 @@ plot_intensity_vs_severity <- function(jags.model, data_jags, file.in){
   
   ## - save the plot
   ggsave(file.in, plot.out, width = 23, height = 8, units = "cm", dpi = 600)
+  return(file.in)
+  
+}
+
+
+
+
+#' Plot the relation between disturbance severity (observed) and intensity (estimated)
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param FUNDIV_plot Plot table formatted for FUNDIV
+#' @param file.in Path and file where to save the plot
+map_intensity_and_severity <- function(jags.model, data_jags, FUNDIV_plot, file.in){
+  
+  ## - Create directories if needed
+  create_dir_if_needed(file.in)
+  
+  ## - make the plot
+  # Prepare the data for plotting
+  data.plot <- data.frame(plot = data_jags$data_jags$plot, 
+                          Ifire = data_jags$data_jags$Dfire, 
+                          Istorm = data_jags$data_jags$Dstorm, 
+                          Iother = data_jags$data_jags$Dother) %>%
+    distinct() %>%
+    gather(key = "variable", value = "value", "Ifire", "Istorm", "Iother") %>%
+    filter(value == 1) %>%
+    mutate(Parameter = paste0(variable, "[", plot, "]")) %>%
+    left_join((ggs(as.mcmc(jags.model)) %>%
+                 group_by(Parameter) %>%
+                 summarize(intensity = mean(value, na.rm = T))), 
+              by = "Parameter") %>%
+    left_join((data.frame(plot = data_jags$data_jags$plot, 
+                          dead = data_jags$data_jags$d) %>%
+                 group_by(plot) %>%
+                 summarize(severity = sum(dead)/n())), 
+              by = "plot") %>%
+    mutate(disturbance.type = gsub("I", "", variable)) %>%
+    left_join(data_jags$plotcode_table, by = "plot") %>%
+    left_join((FUNDIV_plot %>% dplyr::select(plotcode, longitude, latitude)), by = "plotcode") %>%
+    dplyr::select(plotcode, longitude, latitude, disturbance = disturbance.type, 
+                  intensity, severity) %>%
+    gather(key = "variable", value = "value", "intensity", "severity") %>%
+    st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant")
+  
+  # Make the plot
+  plot.out <- ne_countries(scale = "medium", returnclass = "sf") %>%
+    ggplot(aes(geometry = geometry)) +
+    geom_sf(fill = "#E9ECEF", show.legend = F) +
+    # Add storm disturbance
+    geom_sf(data = (data.plot %>% filter(disturbance == "storm")), 
+            shape = 16, aes(color = value), 
+            show.legend = "point", size = 1) +
+    scale_color_gradient(low = "#89C2D9", high = "#014F86", name = "storm") +
+    new_scale_colour() +
+    # Add other disturbance
+    geom_sf(data = (data.plot %>% filter(disturbance == "other")), 
+            shape = 16, aes(color = value), 
+            show.legend = "point", size = 1) +
+    scale_color_gradient(low = "#B7E4C7", high = "#1B4332", name = "other") +
+    new_scale_colour() +
+    # Add fire disturbance
+    geom_sf(data = (data.plot %>% filter(disturbance == "fire")), 
+            shape = 16, aes(color = value), 
+            show.legend = "point", size = 1) +
+    scale_color_gradient(low = "#FFBA08", high = "#D00000", name = "fire") +
+    new_scale_colour() +
+    coord_sf(xlim = c(-10, 10), ylim = c(36, 52)) + 
+    annotation_scale(location = "bl", width_hint = 0.13) +
+    facet_wrap(~ variable)  +
+    theme(panel.background = element_rect(color = 'black', fill = 'white'), 
+          panel.grid = element_blank(),
+          strip.background = element_blank(), 
+          strip.text = element_text(size = 12, face = "bold")) 
+  
+  
+  ## - save the plot
+  ggsave(file.in, plot.out, width = 25, height = 16, units = "cm", dpi = 600)
   return(file.in)
   
 }

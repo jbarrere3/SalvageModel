@@ -19,14 +19,16 @@
 
 
 
+
 #' Fit the mortality model with disturbance event given in the data for several countries
 #' @param data_jags.in List containing all the inputs of the model
 #' @param n.chains numeric: Number of MCMC Markov chains
 #' @param n.iter numeric: Number of iterations
 #' @param n.burn numeric: Burn-in
 #' @param n.thin numeric: Thinning rate
+#' @param param.in parameters to extract
 #' @return A rjags object
-fit_mortality_full_sub <- function(data_jags.in, n.chains, n.iter, n.burn, n.thin){
+fit_mortality_full_sub <- function(data_jags.in, n.chains, n.iter, n.burn, n.thin, param.in){
   
   # Initialize time
   start <- Sys.time()
@@ -57,15 +59,15 @@ fit_mortality_full_sub <- function(data_jags.in, n.chains, n.iter, n.burn, n.thi
     ## - Priors
     # Priors at species level
     for(s in 1:Nspecies){
-      c0[s] ~ dnorm(0, 1)
-      c1[s] ~ dexp(0.5)
-      c2[s] ~ dnorm(0, 1)
-      c3[s] ~ dnorm(0, 1)
-      c4[s] ~ dexp(0.5)
-      c5[s] ~ dnorm(0, 1)
-      c6[s] ~ dnorm(0, 1)
-      c7[s] ~ dexp(0.5)
-      c8[s] ~ dnorm(0, 1)
+      c0[s] ~ dnorm(0, 0.1)
+      c1[s] ~ dnorm(0, 0.1) T(0.01, 100)
+      c2[s] ~ dnorm(0, 1) 
+      c3[s] ~ dnorm(0, 0.1)
+      c4[s] ~ dnorm(0, 0.1) T(0.01, 100)
+      c5[s] ~ dnorm(0, 1) 
+      c6[s] ~ dnorm(0, 0.1)
+      c7[s] ~ dnorm(0, 0.1) T(0.01, 100)
+      c8[s] ~ dnorm(0, 1) 
     }
     
     
@@ -78,6 +80,7 @@ fit_mortality_full_sub <- function(data_jags.in, n.chains, n.iter, n.burn, n.thi
     
     
     
+    
   }"
   
   
@@ -86,13 +89,13 @@ fit_mortality_full_sub <- function(data_jags.in, n.chains, n.iter, n.burn, n.thi
   tmp <- tempfile()
   writeLines(mortality_model_D, tmp)
   out <- R2jags::jags.parallel(data = data_jags.in,
-                      param = paste0("c", c(0:8)),
-                      model.file = tmp,
-                      n.chains = n.chains,
-                      n.iter = n.iter,
-                      n.burnin = n.burn,
-                      n.thin = n.thin,
-                      DIC = TRUE)
+                               param = param.in,
+                               model.file = tmp,
+                               n.chains = n.chains,
+                               n.iter = n.iter,
+                               n.burnin = n.burn,
+                               n.thin = n.thin,
+                               DIC = TRUE)
   
   # Print the computation time
   stop <- Sys.time()
@@ -102,8 +105,6 @@ fit_mortality_full_sub <- function(data_jags.in, n.chains, n.iter, n.burn, n.thi
   
   return(out)
 }
-
-
 
 #' Fit the mortality model with disturbance event given in the data for several countries
 #' @param data_jags.in List containing all the inputs of the model
@@ -143,14 +144,14 @@ fit_mortality_full_sub_simulated <- function(data_jags.in, n.chains, n.iter, n.b
     ## - Priors
     # Priors at species level
     for(s in 1:Nspecies){
-      c0[s] ~ dnorm(0, 1)
-      c1[s] ~ dexp(0.5)
+      c0[s] ~ dnorm(0, 0.1)
+      c1[s] ~ dnorm(0, 0.1) T(0.01, 100)
       c2[s] ~ dnorm(0, 1) 
-      c3[s] ~ dnorm(0, 1)
-      c4[s] ~ dexp(0.5)
+      c3[s] ~ dnorm(0, 0.1)
+      c4[s] ~ dnorm(0, 0.1) T(0.01, 100)
       c5[s] ~ dnorm(0, 1) 
-      c6[s] ~ dnorm(0, 1)
-      c7[s] ~ dexp(0.5)
+      c6[s] ~ dnorm(0, 0.1)
+      c7[s] ~ dnorm(0, 0.1) T(0.01, 100)
       c8[s] ~ dnorm(0, 1) 
     
     }

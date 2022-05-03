@@ -21,11 +21,12 @@ library(targets)
 # Load functions
 lapply(grep("R$", list.files("R"), value = TRUE), function(x) source(file.path("R", x)))
 # install if needed and load packages
-packages.in <- c("dplyr", "ggplot2", "RCurl", "httr", "tidyr", "data.table", "sp", "R2jags", 
+packages.in <- c("dplyr", "ggplot2", "tidyr", "data.table", "sp", "R2jags", 
                  "ggmcmc", "taxize", "rnaturalearth", "ggspatial", "sf", "ggnewscale")
-for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.packages()))) install.packages(packages.in[i])
+# for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.packages()))) install.packages(packages.in[i])
 # Targets options
-options(tidyverse.quiet = TRUE, clustermq.scheduler = "multiprocess")
+options(tidyverse.quiet = TRUE)
+#options(tidyverse.quiet = TRUE, clustermq.scheduler = "multiprocess")
 tar_option_set(packages = packages.in)
 set.seed(2)
 
@@ -40,16 +41,20 @@ list(
   
   # Raw data
   tar_target(datafiles, paste0("data/", list.files("data")), format = "file"),
-  tar_target(FUNDIV_tree_FR, fread(datafiles[3])), 
-  tar_target(FUNDIV_plot_FR, fread(datafiles[2])), 
-  tar_target(FUNDIV_tree_SP, fread(datafiles[6])), 
-  tar_target(FUNDIV_plot_SP, fread(datafiles[5])), 
-  tar_target(Climate, fread(datafiles[4])), 
-  tar_target(BM_equations, fread(datafiles[1])), 
+  tar_target(FUNDIV_tree_FR, fread(grep("FrenchNFI_tree", datafiles, value = TRUE))), 
+  tar_target(FUNDIV_plot_FR, fread(grep("FrenchNFI_plot", datafiles, value = TRUE))), 
+  tar_target(FUNDIV_tree_SP, fread(grep("SpanishNFI_tree", datafiles, value = TRUE))), 
+  tar_target(FUNDIV_plot_SP, fread(grep("SpanishNFI_plot", datafiles, value = TRUE))), 
+  tar_target(FUNDIV_tree_FI, fread(grep("FinnishNFI_tree", datafiles, value = TRUE))), 
+  tar_target(FUNDIV_plot_FI, fread(grep("FinnishNFI_plot", datafiles, value = TRUE))), 
+  tar_target(Climate_noFI, fread(grep("NFI_climate", datafiles, value = TRUE))), 
+  tar_target(Climate_FI, fread(grep("climate_FI", datafiles, value = TRUE))), 
+  tar_target(BM_equations, fread(grep("BM_equations", datafiles, value = TRUE))), 
   
   # Merge data from the different NFI
-  tar_target(FUNDIV_tree, rbind(FUNDIV_tree_FR, FUNDIV_tree_SP)),
-  tar_target(FUNDIV_plot, rbind(FUNDIV_plot_FR, FUNDIV_plot_SP)),
+  tar_target(FUNDIV_tree, rbind(FUNDIV_tree_FR, FUNDIV_tree_SP, FUNDIV_tree_FI)),
+  tar_target(FUNDIV_plot, rbind(FUNDIV_plot_FR, FUNDIV_plot_SP, FUNDIV_plot_FI)),
+  tar_target(Climate, rbind(Climate_FI, Climate_noFI)),
   
   # Extract species information (genus, family, order)
   tar_target(species, get_species_info(FUNDIV_tree)),
@@ -82,12 +87,12 @@ list(
   # Fit the jags model
   # - With France and Spain
   tar_target(jags.model_full_sub, fit_mortality_full_sub(
-    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1, param.in = paste0("c", c(0:8)))), 
+    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 1, param.in = paste0("c", c(0:8)))), 
   tar_target(jags.model_full_sub_I, fit_mortality_full_sub(
     data_jags_full_sub$data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 10, param.in = c("Istorm", "Ifire", "Iother"))), 
   # - With France and Spain and simulated data
   tar_target(jags.model_full_sub_simulated, fit_mortality_full_sub_simulated(
-    data_jags_full_sub_simulated$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)), 
+    data_jags_full_sub_simulated$data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 1)), 
   
   
   

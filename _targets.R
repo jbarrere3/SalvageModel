@@ -21,9 +21,9 @@ library(targets)
 # Load functions
 lapply(grep("R$", list.files("R"), value = TRUE), function(x) source(file.path("R", x)))
 # install if needed and load packages
-packages.in <- c("dplyr", "ggplot2", "tidyr", "data.table", "sp", "R2jags", "sf") 
-                 #"ggmcmc", "taxize", "rnaturalearth", "ggspatial", "ggnewscale")
-# for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.packages()))) install.packages(packages.in[i])
+packages.in <- c("dplyr", "ggplot2", "tidyr", "data.table", "sp", "R2jags", "sf",
+                 "ggmcmc", "taxize", "rnaturalearth", "ggspatial", "ggnewscale")
+for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.packages()))) install.packages(packages.in[i])
 # Targets options
 options(tidyverse.quiet = TRUE)
 #options(tidyverse.quiet = TRUE, clustermq.scheduler = "multiprocess")

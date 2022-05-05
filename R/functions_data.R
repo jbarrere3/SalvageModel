@@ -317,6 +317,7 @@ get_species_info <- function(FUNDIV_tree){
     filter(!is.na(speciesname)) %>%
     dplyr::select(speciesname) %>%
     distinct()
+  print("SPECIES TO FAMILY")
   species_to_family <- tax_name(sci = species_to_family$speciesname, get = "family", db = "ncbi", messages = FALSE)
   
   # Create a table linking the genus to the family
@@ -328,6 +329,7 @@ get_species_info <- function(FUNDIV_tree){
     distinct()
   
   # Create a table linking the family to the branch
+  print("FAMILY TO BRANCH")
   family_to_branch <- tpl_families()
   
   # Merge all datasets

@@ -330,7 +330,9 @@ get_species_info <- function(FUNDIV_tree){
   
   # Create a table linking the family to the branch
   print("FAMILY TO BRANCH")
-  family_to_branch <- tpl_families()
+  family_to_branch <- data.frame(family = unique(genus_to_family$family)) %>%
+    mutate(group = case_when(family %in% c("Cupressaceae", "Pinaceae", "Taxaceae") ~ "Gymnosperms", 
+                             TRUE ~ "Angiosperms"))
   
   # Merge all datasets
   species.final <- species %>%

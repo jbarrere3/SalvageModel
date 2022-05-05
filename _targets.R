@@ -145,7 +145,13 @@ list(
     format = "file"), 
   tar_target(fig_wai_species_disturbance, plot_climate_per_species_per_disturbance(
     data_model_full, "wai", "fig/exploratory/wai_species_disturbance.png"), 
-    format = "file")
+    format = "file"), 
+  
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # -- Step 6 - Traits analysis ----
+  tar_target(disturbance_sensitivity, get_disturbance_sensivity(
+    jags.model_full_sub, data_jags_full_sub, data_model_full_scaled, data_model_full, disturbance_species_info))
+  
   
   
   

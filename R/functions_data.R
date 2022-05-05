@@ -504,3 +504,67 @@ get_disturbance_species_info <- function(data_model){
 
 
 
+
+
+#' Extract from the model disturbance sensitivity
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param data_model Tree data formatted for the IPM. 
+#' @param data_model_scaled Tree data formatted for the IPM and scaled 
+get_disturbance_sensivity <- function(jags.model, data_jags, data_model_scaled, data_model, 
+                                      disturbance_species_info){
+  
+  # Identify parameters per species
+  param_per_species <- ggs(as.mcmc(jags.model)) %>%
+    filter(Parameter != "deviance") %>%
+    mutate(sp = as.integer(gsub("\\]", "", gsub(".+\\[", "", Parameter))), 
+           Parameter = gsub("\\[.+\\]", "", Parameter)) %>%
+    left_join(data_jags$species_table, by = "sp") %>% 
+    group_by(species, Parameter) %>%
+    summarize(mean = mean(value)) %>%
+    spread(key = "Parameter", value = "mean")
+  
+  # Model to scale dbh
+  scale_dbh <- lm(dbh.scaled ~ dbh, 
+                  data = data.frame(dbh = data_model$dbh, 
+                                    dbh.scaled = data_model_scaled$dbh))
+  # Parameters to keep per species
+  species_parameter_to_keep <- (disturbance_species_info$species_disturbance_table %>%
+                                  filter(n.indiv > 50 & n.plot > 5) %>%
+                                  mutate(c0 = ifelse(disturbance.type == "storm", 1, 0), 
+                                         c1 = ifelse(disturbance.type == "storm", 1, 0), 
+                                         c2 = ifelse(disturbance.type == "storm", 1, 0), 
+                                         c3 = ifelse(disturbance.type == "other", 1, 0), 
+                                         c4 = ifelse(disturbance.type == "other", 1, 0), 
+                                         c5 = ifelse(disturbance.type == "other", 1, 0), 
+                                         c6 = ifelse(disturbance.type == "fire", 1, 0), 
+                                         c7 = ifelse(disturbance.type == "fire", 1, 0), 
+                                         c8 = ifelse(disturbance.type == "fire", 1, 0)) %>%
+                                  gather(key = "Parameter", value = "Present", paste0("c", c(0:8))) %>%
+                                  filter(Present == 1) %>%
+                                  mutate(ID = paste(species, Parameter, sep = ".")))$ID
+  
+  # - Pre-format the data before plotting
+  out <- expand.grid(species = unique(param_per_species$species), 
+                     dbh = c(150, 400, 700), 
+                     Intensity = 0.8) %>%
+    mutate(dbh.scaled = predict(scale_dbh, newdata = .)) %>%
+    left_join(param_per_species, by = "species") %>%
+    gather(key = "Parameter", value = "value", paste0("c", c(0:8))) %>%
+    mutate(ID = paste(species, Parameter, sep = "."), 
+           value = ifelse(ID %in% species_parameter_to_keep, value, NA_real_)) %>%
+    dplyr::select(-ID) %>%
+    spread(key = Parameter, value = value) %>%
+    mutate(storm = plogis(c0 + c1*Intensity*dbh.scaled^c2), 
+           other = plogis(c3 + c4*Intensity*dbh.scaled^c5), 
+           fire = plogis(c6 + c7*Intensity*dbh.scaled^c8)) %>%
+    dplyr::select(species, dbh, storm, other, fire) %>%
+    gather(key = "disturbance", value = "sensitivity", "storm", "other", "fire") %>%
+    mutate(trait.name = paste0(disturbance, ".dbh", dbh)) %>%
+    dplyr::select(-dbh, -disturbance) %>%
+    spread(key = trait.name, value = sensitivity)
+  
+  
+  # return the formatted dataset
+  return(out)
+}

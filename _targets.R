@@ -22,7 +22,7 @@ library(targets)
 lapply(grep("R$", list.files("R"), value = TRUE), function(x) source(file.path("R", x)))
 # install if needed and load packages
 packages.in <- c("dplyr", "ggplot2", "RCurl", "httr", "tidyr", "data.table", "sp", "R2jags", 
-                 "ggmcmc", "taxize", "rnaturalearth", "ggspatial", "sf", "ggnewscale")
+                 "ggmcmc", "taxize", "rnaturalearth", "ggspatial", "sf", "ggnewscale", "readxl", "scales")
 for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.packages()))) install.packages(packages.in[i])
 # Targets options
 options(tidyverse.quiet = TRUE, clustermq.scheduler = "multiprocess")
@@ -149,8 +149,23 @@ list(
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # -- Step 6 - Traits analysis ----
+  
+  # data files
+  tar_target(bark.thickness_file, "data/traits/bark_thickness_FrenchNFI.csv", format = "file"),
+  tar_target(wood.density_file, "data/traits/GlobalWoodDensityDatabase.xls", format = "file"),
+  
+  # Compile traits data
+  tar_target(traits, compile_traits(bark.thickness_file, wood.density_file, 
+                                    data_jags_full_sub$species_table$species)),
+  
+  # Get disturbance sensitivity
   tar_target(disturbance_sensitivity, get_disturbance_sensivity(
-    jags.model_full_sub, data_jags_full_sub, data_model_full_scaled, data_model_full, disturbance_species_info))
+    jags.model_full_sub, data_jags_full_sub, data_model_full_scaled, data_model_full, disturbance_species_info)), 
+  
+  # Plot disturbance sensitivity against trait values
+  tar_target(fig_sensitivity_vs_traits, plot_sensitivity_vs_traits(
+    traits, disturbance_sensitivity, "fig/real_data/multispecies_submodel_full/traits"), 
+    format = "file")
   
   
   

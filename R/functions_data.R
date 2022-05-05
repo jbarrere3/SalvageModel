@@ -568,3 +568,36 @@ get_disturbance_sensivity <- function(jags.model, data_jags, data_model_scaled, 
   # return the formatted dataset
   return(out)
 }
+
+
+
+
+
+#' Compile all traits data
+#' @param bark.thickness_file file containing data on bark thickness
+#' @param wood.density_file file containing data on wood density
+#' @param species.in character vector of all the species for which to extract the data
+compile_traits <- function(bark.thickness_file, wood.density_file, species.in){
+  
+  # Wood density (Chave et al. 2008 + Dryad to quote)
+  wood.density <- read_xls(wood.density_file, sheet = "Data")
+  colnames(wood.density) <- c("n", "family", "species", "wood.density_g.cm3", "region", "reference")
+  
+  # Bark thickness (Bouvet & Deleuze 2013)
+  bark.thickness <- fread(bark.thickness_file) %>%
+    gather(key = "variable", value = "value", colnames(.)[which(colnames(.) != "species")]) %>%
+    mutate(value = as.numeric(gsub("\\,", "\\.", value))) %>%
+    spread(key = "variable", value = "value")
+  
+  # Global trait dataset
+  traits <- data.frame(species = species.in) %>%
+    # Add wood density
+    left_join((wood.density %>% 
+                 group_by(species) %>%
+                 summarize(wood.density_g.cm3 = mean(wood.density_g.cm3))),
+              by = "species") %>%
+    # Add bark thickness
+    left_join(bark.thickness, by = "species")
+  
+  return(traits)
+}

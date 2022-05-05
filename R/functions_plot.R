@@ -726,3 +726,119 @@ map_intensity_and_severity <- function(jags.model, data_jags, FUNDIV_plot, file.
   
 }
 
+
+
+
+#' Plot the relation between sensitivity to disturbance and a given trait
+#' @param traits dataframe containing trait values per species
+#' @param disturbance_sensitivity dataframe containing disturbance sensitivity per sp
+#' @param trait.in character: which trait to plot against sensitivity
+plot_sensitivity_vs_trait <- function(traits, disturbance_sensitivity, trait.in){
+  # Data set containing plot value per disturbance and per dbh
+  data_points <- disturbance_sensitivity %>%
+    gather(key = "var", value = "value", colnames(.)[which(colnames(.) != "species")]) %>%
+    mutate(disturbance = gsub("\\..+", "", var), 
+           dbh = gsub(".+\\.", "", var), 
+           dbh = paste0("dbh = ", gsub("dbh", "", dbh), " mm")) %>%
+    left_join((traits %>% dplyr::select("species", "trait" = trait.in)), by = "species") %>%
+    mutate(value.logit = log(value/(1 - value)))
+  
+  # Initialize data set containing model fit per disturbance and per dbh
+  data_fit0 <-  expand.grid(
+    trait = c((min(round(data_points$trait, digits = 2), na.rm = TRUE)*100):
+                (max(round(data_points$trait, digits = 2), na.rm = TRUE)*100))/100, 
+    disturbance = unique(data_points$disturbance), 
+    dbh = unique(data_points$dbh)) 
+  
+  # Initialize data set containing model pvalue per disturbance and per dbh
+  data_plot.label <- expand.grid(
+    disturbance = unique(data_points$disturbance), 
+    dbh = unique(data_points$dbh), 
+    label = NA)
+  
+  # Loop on all type of disturbance
+  for(i in unique(data_points$disturbance)){
+    # Second loop on all classes of dbh
+    for(j in unique(data_points$dbh)){
+      # Fit the model
+      model.i = lm(value.logit ~ trait, 
+                   data = (data_points %>% filter(disturbance == i & dbh == j)))
+      
+      # extract pvalue and add to data_plot.label
+      p.ij <- paste0("F=", round(anova(model.i)[1, 4], digits = 2), " ; ", 
+                     scales::pvalue(anova(model.i)[1, 5], accuracy = 0.05, add_p = TRUE))
+      data_plot.label$label[which(data_plot.label$disturbance == i & data_plot.label$dbh == j)] <- 
+        as.character(p.ij)
+      
+      # Output for disturbance i dbh j
+      data_fit.ij <- data_fit0 %>% 
+        filter(disturbance == i & dbh == j) %>%
+        mutate(fit.logit = predict(model.i, newdata = .), 
+               fit = plogis(fit.logit))
+      
+      # Add fit to final output
+      if(i == unique(data_points$disturbance)[1] & j == unique(data_points$dbh)[1]){
+        data_fit = data_fit.ij
+      } else {data_fit <- rbind(data_fit, data_fit.ij)}
+    }
+  }
+  
+  ## Make the plot
+  data_points %>%
+    ggplot(aes(x = trait, y = value, group = 1)) + 
+    geom_line(aes(color = disturbance, y = fit), 
+              data = data_fit, inherit.aes = TRUE) + 
+    geom_point(aes(fill = disturbance), shape = 21) + 
+    geom_text(aes(x = min(data_points$trait, na.rm = TRUE) + max(data_points$trait, na.rm = TRUE)/5, 
+                  y = max(data_points$value, na.rm = TRUE) - min(data_points$value, na.rm = TRUE)/5, 
+                  label = label), 
+              data = data_plot.label, inherit.aes = TRUE, 
+              size = 3) + 
+    facet_grid(disturbance ~ dbh) + 
+    scale_color_manual(values = c("#F3722C", "#8AC926", "#1982C4")) +
+    scale_fill_manual(values = c("#F3722C", "#8AC926", "#1982C4")) +
+    xlab(trait.in) + ylab("Sensitivity") +
+    theme(panel.background = element_rect(fill = "white", color = "black"), 
+          panel.grid = element_blank(), 
+          legend.title = element_blank(), 
+          legend.key = element_blank(),
+          strip.background = element_blank(), 
+          strip.text.y = element_blank(), 
+          strip.text.x = element_text(face = "bold"))
+}
+
+#' Plot the relation between sensitivity to disturbance and all traits
+#' @param traits dataframe containing trait values per species
+#' @param disturbance_sensitivity dataframe containing disturbance sensitivity per sp
+#' @param dir.in character: directory where to save the plots
+plot_sensitivity_vs_traits <- function(traits, disturbance_sensitivity, dir.in){
+  
+  # Initialize output
+  out <- c()
+  
+  # Species included in the simulations
+  all.traits <- colnames(traits)[which(colnames(traits) != "species")]
+  
+  
+  # Loop on all traits
+  for(i in 1:length(all.traits)){
+    
+    # Name of the file to create for trait i
+    file.in.i <- paste0(dir.in, "/fig_", all.traits[i], ".png")
+    
+    # Create the directory if it doesn't exist
+    create_dir_if_needed(file.in.i)
+    
+    # Add the file name to the output
+    out <- c(out, file.in.i)
+    
+    # Make the plot
+    plot.i <- plot_sensitivity_vs_trait(traits, disturbance_sensitivity, all.traits[i])
+    
+    # Save the plot
+    ggsave(file.in.i, plot.i, width = 17, height = 12, units = "cm", dpi = 600)
+  }
+  
+  # return the name of all the plots made
+  return(out)
+}

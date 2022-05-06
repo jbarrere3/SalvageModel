@@ -25,8 +25,7 @@ packages.in <- c("dplyr", "ggplot2", "tidyr", "data.table", "sp", "R2jags", "sf"
                  "ggmcmc", "taxize", "rnaturalearth", "ggspatial", "ggnewscale")
 for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.packages()))) install.packages(packages.in[i])
 # Targets options
-options(tidyverse.quiet = TRUE, clustermq.scheduler = "multiprocess")
-#options(tidyverse.quiet = TRUE, clustermq.scheduler = "multiprocess")
+options(tidyverse.quiet = TRUE, clustermq.scheduler = "multicore")
 tar_option_set(packages = packages.in)
 set.seed(2)
 

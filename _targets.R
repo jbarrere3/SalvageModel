@@ -133,10 +133,10 @@ list(
   tar_target(fig_intensity_vs_severity, plot_intensity_vs_severity(
     jags.model_full_sub_I, data_jags_full_sub, "fig/real_data/multispecies_submodel_full/intensity_vs_severity.png"), 
     format = "file"),
-  tar_target(fig_map_intensity_and_severity, map_intensity_and_severity(
-    jags.model_full_sub_I, data_jags_full_sub, FUNDIV_plot, 
-    "fig/real_data/multispecies_submodel_full/map_intensity_and_severity.png"), 
-    format = "file"),
+  #tar_target(fig_map_intensity_and_severity, map_intensity_and_severity(
+   # jags.model_full_sub_I, data_jags_full_sub, FUNDIV_plot, 
+   # "fig/real_data/multispecies_submodel_full/map_intensity_and_severity.png"), 
+   # format = "file"),
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # -- Step 5 - Exploratory plots ----

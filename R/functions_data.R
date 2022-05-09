@@ -577,7 +577,7 @@ get_disturbance_sensivity <- function(jags.model, data_jags, data_model_scaled, 
 #' @param bark.thickness_file file containing data on bark thickness
 #' @param wood.density_file file containing data on wood density
 #' @param species.in character vector of all the species for which to extract the data
-compile_traits <- function(bark.thickness_file, wood.density_file, species.in){
+compile_traits <- function(bark.thickness_file, wood.density_file, shade.tolerance_file, species.in){
   
   # Wood density (Chave et al. 2008 + Dryad to quote)
   wood.density <- read_xls(wood.density_file, sheet = "Data")
@@ -585,6 +585,12 @@ compile_traits <- function(bark.thickness_file, wood.density_file, species.in){
   
   # Bark thickness (Bouvet & Deleuze 2013)
   bark.thickness <- fread(bark.thickness_file) %>%
+    gather(key = "variable", value = "value", colnames(.)[which(colnames(.) != "species")]) %>%
+    mutate(value = as.numeric(gsub("\\,", "\\.", value))) %>%
+    spread(key = "variable", value = "value")
+  
+  # Bark thickness (Niimenets)
+  shade.tolerance <- fread(shade.tolerance_file) %>%
     gather(key = "variable", value = "value", colnames(.)[which(colnames(.) != "species")]) %>%
     mutate(value = as.numeric(gsub("\\,", "\\.", value))) %>%
     spread(key = "variable", value = "value")
@@ -597,7 +603,9 @@ compile_traits <- function(bark.thickness_file, wood.density_file, species.in){
                  summarize(wood.density_g.cm3 = mean(wood.density_g.cm3))),
               by = "species") %>%
     # Add bark thickness
-    left_join(bark.thickness, by = "species")
+    left_join(bark.thickness, by = "species") %>%
+    # Add shade tolerance
+    left_join(shade.tolerance, by = "species")
   
   return(traits)
 }

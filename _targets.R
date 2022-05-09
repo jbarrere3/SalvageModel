@@ -153,9 +153,10 @@ list(
   # data files
   tar_target(bark.thickness_file, "data/traits/bark_thickness_FrenchNFI.csv", format = "file"),
   tar_target(wood.density_file, "data/traits/GlobalWoodDensityDatabase.xls", format = "file"),
+  tar_target(shade.tolerance_file, "data/traits/shade_tolerance_FrenchNFI.csv", format = "file"),
   
   # Compile traits data
-  tar_target(traits, compile_traits(bark.thickness_file, wood.density_file, 
+  tar_target(traits, compile_traits(bark.thickness_file, wood.density_file, shade.tolerance_file,
                                     data_jags_full_sub$species_table$species)),
   
   # Get disturbance sensitivity

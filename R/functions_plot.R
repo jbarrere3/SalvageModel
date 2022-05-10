@@ -277,6 +277,76 @@ plot_convergence <- function(jags.model, data_jags, BM_equations, disturbance_sp
 }
 
 
+#' Plot Markov chain convergence of a rjags object
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param disturbance_species_info information on which disturbance affected which species
+#' @param dir.in Path where to save the plot
+plot_convergence_climate <- function(jags.model, data_jags, disturbance_species_info, 
+                                     dir.in){
+  
+  # Initialize output
+  out <- c()
+  
+  # Species included in the simulations
+  species.in <- data_jags$species_table$species
+  
+  # Species for which we have enough disturbed trees
+  species.to.keep.in <- (data.frame(ID = disturbance_species_info$species_parameter_to_keep) %>%
+                           mutate(species = gsub("\\..+", "", ID)) %>%
+                           dplyr::select(-ID) %>%
+                           distinct())$species
+  
+  # Parameters to keep 
+  params.in <- (data.frame(ID = disturbance_species_info$species_parameter_to_keep) %>%
+                  mutate(Parameter = gsub(".+\\.", "", ID)) %>%
+                  dplyr::select(-ID) %>%
+                  distinct())$Parameter
+  
+  # Number of parameter per type of disturbance
+  n.param.per.dist <- round(length(params.in)/3, digits = 0)
+  
+  # Loop on all species
+  for(i in 1:length(species.in)){
+    
+    # Only make the figure if the species have been sufficiently exposed to 
+    # to at least one disturbance
+    if(species.in[i] %in% species.to.keep.in){
+      # Create directories if needed
+      file.in.i <- paste0(dir.in, "/fig_convergence_", gsub(" ", "-", species.in[i]), ".png")
+      create_dir_if_needed(file.in.i)
+      # Add to the output
+      out <- c(out, file.in.i)
+      # Get the species code
+      species.code.i <- data_jags$species_table$sp[i]
+      # Add the species code to have the complete list of columns to sample
+      params.in.i <- paste0(params.in, "[", species.code.i, "]")
+      
+      ## - Make the plot
+      plot.i <- ggs(as.mcmc(jags.model)) %>%
+        filter(Parameter %in% params.in.i) %>%
+        mutate(Parameter = gsub(paste0("\\[", species.code.i, "\\]"), "", Parameter), 
+               Chain = as.factor(Chain), 
+               ID = paste(species.in[i], Parameter, sep = "."), 
+               value = ifelse(ID %in% disturbance_species_info$species_parameter_to_keep, value, NA_real_)) %>%
+        ggplot(aes(x = Iteration, y = value, colour = Chain, group = Chain)) + 
+        geom_line() + 
+        facet_wrap(~ Parameter, scales = "free", ncol = n.param.per.dist) + 
+        scale_color_manual(values = c("#335C67", "#E09F3E", "#9E2A2B")) +
+        theme_bw() + 
+        ggtitle(species.in[i])
+      
+      ## - Save the plot
+      ggsave(file.in.i, plot.i, width = 17, height = 12, units = "cm", dpi = 600)
+    }
+    
+  }
+  
+  # return the name of all the plots made
+  return(out)
+}
+
+
 
 #' Plot harvest probability depending on dbh, disturbance and land property
 #' @param jags.model rjags object
@@ -457,34 +527,27 @@ plot_parameters_true_vs_estimated2 <- function(jags.model, data_jags, parameters
            Parameter = gsub("\\[.+\\]", "", Parameter)) %>%
     left_join(data_jags$species_table, by = "sp") %>% 
     dplyr::select(-sp) %>%
-    spread(key = species, value = value) %>%
-    mutate(.PRIOR = case_when(Parameter %in% c("c0", "c3", "c6", "c2", "c5", "c8", "c9", "c10") ~ rnorm(nrow(.), 0, 1), 
-                              Parameter %in% c("c1", "c4", "c7") ~ rexp(nrow(.), 0.5), 
-                              TRUE ~ NA_real_)) %>%
-    gather(key = "species", value = "value", c(unique(data_jags$species_table$species), ".PRIOR")) %>%
     group_by(species, Parameter) %>%
     summarize(mean = mean(value), 
               sd = sd(value)) %>%
-    mutate(type = ifelse(species == ".PRIOR", "prior", "species")) %>%
     mutate(ID = paste(species, Parameter, sep = ".")) %>%
     left_join((data_jags$species_table %>%
                  left_join(parameters_sp, by = "sp") %>%
                  gather(key = "Parameter", value = "value.true", 
-                        colnames(.)[which(colnames(.) %in% paste0("c", c(0:11)))]) %>%
+                        colnames(parameters_sp)[which(colnames(parameters_sp) != "sp")]) %>%
                  mutate(ID = paste(species, Parameter, sep = ".")) %>%
                  dplyr::select(ID, value.true)), 
               by = "ID") %>%
-    filter(ID %in% c(disturbance_species_info$species_parameter_to_keep, 
-                     paste0(".PRIOR.c", c(0:11)))) %>%
-    filter(type != "prior") %>%
+    filter(ID %in% disturbance_species_info$species_parameter_to_keep) %>%
     mutate(Parameter = factor(
-      Parameter, levels = paste0("c", c(0:11))[which(paste0("c", c(0:11)) %in% unique(.$Parameter))])) %>%
+      Parameter, levels = colnames(parameters_sp)[which(colnames(parameters_sp) != "sp")])) %>%
     ggplot(aes(x = value.true, y = mean, fill = species)) + 
     geom_errorbar(aes(ymin = mean - sd, ymax = mean+sd), 
                   width = 0)  + 
     geom_point(size = 1, shape = 21, color = "black") + 
     geom_abline(intercept = 0, slope = 1) +
-    facet_wrap(~ Parameter, scales = "free") + 
+    facet_wrap(~ Parameter, scales = "free", 
+               ncol = round((dim(parameters_sp)[2] - 1)/3, digits = 0)) + 
     ylab("Estimated parameter value") + xlab("True parameter value") +
     theme(panel.background = element_rect(color = "black", fill = "white"), 
           strip.background = element_blank(), 

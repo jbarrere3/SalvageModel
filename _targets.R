@@ -75,6 +75,12 @@ list(
   tar_target(parameters_sp, generate_parameters_sp(data_jags_full_sub)),
   tar_target(data_jags_full_sub_simulated, simulate_status_full_sub(data_jags_full_sub, parameters_sp)),
   
+  # Simulate data for a model with a climate effect
+  tar_target(data_jags_full_sub_climate, generate_data_jags_full_sub_climate(data_model_full_scaled)),
+  tar_target(parameters_sp_climate, generate_parameters_sp_climate(data_jags_full_sub_climate)),
+  tar_target(data_jags_full_sub_climate_simulated,
+             simulate_status_full_sub_climate(data_jags_full_sub_climate, parameters_sp_climate)),
+  
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # -- Step 3 - Model fit and output ----
@@ -85,9 +91,14 @@ list(
     data_jags_full_sub$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1, param.in = paste0("c", c(0:8)))), 
   tar_target(jags.model_full_sub_I, fit_mortality_full_sub(
     data_jags_full_sub$data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 10, param.in = c("Istorm", "Ifire", "Iother"))), 
+  tar_target(jags.model_full_sub_climate, fit_mortality_full_sub_climate(
+    data_jags_full_sub_climate$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)),
   # - With France and Spain and simulated data
   tar_target(jags.model_full_sub_simulated, fit_mortality_full_sub_simulated(
     data_jags_full_sub_simulated$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)), 
+  # - With simulated data and climate included
+  tar_target(jags.model_full_sub_climate_simulated, fit_mortality_full_sub_climate_simulated(
+    data_jags_full_sub_climate_simulated$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)),
   
   
   
@@ -96,6 +107,7 @@ list(
   
   # Extract information on how disturbances affect each species (so that parameters that can't be estimated are not shown)
   tar_target(disturbance_species_info, get_disturbance_species_info(data_model_full)),
+  tar_target(disturbance_species_info_climate, get_disturbance_species_info_climate(data_model_full)),
   
   # Plot convergence 
   tar_target(fig_convergence_full_sub, plot_convergence(jags.model_full_sub, data_jags_full_sub, BM_equations, 
@@ -103,6 +115,12 @@ list(
              format = "file"),
   tar_target(fig_convergence_full_sub_simulated, plot_convergence(jags.model_full_sub_simulated, data_jags_full_sub_simulated, BM_equations, 
                                                                   disturbance_species_info, "fig/simulated_data/multispecies_submodel_full/convergence"), 
+             format = "file"),
+  tar_target(fig_convergence_full_sub_climate, plot_convergence_climate(jags.model_full_sub_climate, data_jags_full_sub_climate, 
+                                                                                  disturbance_species_info_climate, "fig/real_data/multispecies_submodel_full_climate/convergence"), 
+             format = "file"),
+  tar_target(fig_convergence_full_sub_climate_simulated, plot_convergence_climate(jags.model_full_sub_climate_simulated, data_jags_full_sub_climate_simulated, 
+                                                                  disturbance_species_info_climate, "fig/simulated_data/multispecies_submodel_full_climate/convergence"), 
              format = "file"),
   
   # Plot parameters per species for real data
@@ -118,6 +136,10 @@ list(
   tar_target(fig_param_true_vs_estimated2, plot_parameters_true_vs_estimated2(
     jags.model_full_sub_simulated, data_jags_full_sub_simulated, parameters_sp, 
     disturbance_species_info, "fig/simulated_data/multispecies_submodel_full/true_vs_estimated2.png"), 
+    format = "file"),
+  tar_target(fig_param_true_vs_estimated2_climate, plot_parameters_true_vs_estimated2(
+    jags.model_full_sub_climate_simulated, data_jags_full_sub_climate_simulated, parameters_sp_climate, 
+    disturbance_species_info_climate, "fig/simulated_data/multispecies_submodel_full_climate/true_vs_estimated.png"), 
     format = "file"),
   
   # Plot the predictions of the model
@@ -154,10 +176,11 @@ list(
   tar_target(bark.thickness_file, "data/traits/bark_thickness_FrenchNFI.csv", format = "file"),
   tar_target(wood.density_file, "data/traits/GlobalWoodDensityDatabase.xls", format = "file"),
   tar_target(shade.tolerance_file, "data/traits/shade_tolerance_FrenchNFI.csv", format = "file"),
+  tar_target(root.depth_file, "data/traits/GRooTAggregateSpeciesVersion.csv", format = "file"),
   
   # Compile traits data
   tar_target(traits, compile_traits(bark.thickness_file, wood.density_file, shade.tolerance_file,
-                                    data_jags_full_sub$species_table$species)),
+                                    root.depth_file, data_jags_full_sub$species_table$species)),
   
   # Get disturbance sensitivity
   tar_target(disturbance_sensitivity, get_disturbance_sensivity(

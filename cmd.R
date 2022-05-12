@@ -3,4 +3,4 @@ if(!("targets" %in% installed.packages())) install.packages("targets")
 # Load targets
 library(targets)
 # Launch the targets pipeline
-tar_make_clustermq(workers = 3)
+tar_make()

@@ -875,3 +875,14 @@ compile_traits <- function(bark.thickness_file, wood.density_file, shade.toleran
   
   return(traits)
 }
+
+#' Compile traits related to the climatic conditions eahc species is exposed to
+#' @param data_model Data frame used to fit the model, with variables unscaled
+compile_traits_climate <- function(data_model){
+  
+  data_model %>%
+    group_by(species) %>%
+    summarize(sgdd.mean = mean(sgdd, na.rm = TRUE), 
+              wai.mean = mean(wai, na.rm = TRUE), 
+              comp.mean = mean(comp, na.rm = TRUE))
+}

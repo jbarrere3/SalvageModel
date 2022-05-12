@@ -181,6 +181,7 @@ list(
   # Compile traits data
   tar_target(traits, compile_traits(bark.thickness_file, wood.density_file, shade.tolerance_file,
                                     root.depth_file, data_jags_full_sub$species_table$species)),
+  tar_target(traits_climate, compile_traits_climate(data_model_full)),
   
   # Get disturbance sensitivity
   tar_target(disturbance_sensitivity, get_disturbance_sensivity(
@@ -189,6 +190,9 @@ list(
   # Plot disturbance sensitivity against trait values
   tar_target(fig_sensitivity_vs_traits, plot_sensitivity_vs_traits(
     traits, disturbance_sensitivity, "fig/real_data/multispecies_submodel_full/traits"), 
+    format = "file"), 
+  tar_target(fig_sensitivity_vs_traits_climate, plot_sensitivity_vs_traits(
+    traits_climate, disturbance_sensitivity, "fig/real_data/multispecies_submodel_full/traits_climate"), 
     format = "file")
   
   

@@ -297,11 +297,19 @@ plot_convergence_climate <- function(jags.model, data_jags, disturbance_species_
                            dplyr::select(-ID) %>%
                            distinct())$species
   
+  # Parameters estimated in the model
+  param.estimated <- unique((ggs(as.mcmc(jags.model)) %>%
+                               filter(Parameter != "deviance") %>%
+                               mutate(Parameter = gsub("\\[.+", "", Parameter)))$Parameter)
+  
   # Parameters to keep 
-  params.in <- (data.frame(ID = disturbance_species_info$species_parameter_to_keep) %>%
+  params.to.keep <- (data.frame(ID = disturbance_species_info$species_parameter_to_keep) %>%
                   mutate(Parameter = gsub(".+\\.", "", ID)) %>%
                   dplyr::select(-ID) %>%
                   distinct())$Parameter
+  
+  # Parameters to plot = parameters estimated in parameters to keep
+  params.in <- param.estimated[which(param.estimated %in% params.to.keep)]
   
   # Number of parameter per type of disturbance
   n.param.per.dist <- round(length(params.in)/3, digits = 0)

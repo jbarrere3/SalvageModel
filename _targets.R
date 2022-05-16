@@ -93,6 +93,8 @@ list(
     data_jags_full_sub$data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 10, param.in = c("Istorm", "Ifire", "Iother"))), 
   tar_target(jags.model_full_sub_climate, fit_mortality_full_sub_climate(
     data_jags_full_sub_climate$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)),
+  tar_target(jags.model_full_sub_climate2, fit_mortality_full_sub_climate2(
+    data_jags_full_sub_climate$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)),
   # - With France and Spain and simulated data
   tar_target(jags.model_full_sub_simulated, fit_mortality_full_sub_simulated(
     data_jags_full_sub_simulated$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)), 
@@ -118,6 +120,9 @@ list(
              format = "file"),
   tar_target(fig_convergence_full_sub_climate, plot_convergence_climate(jags.model_full_sub_climate, data_jags_full_sub_climate, 
                                                                                   disturbance_species_info_climate, "fig/real_data/multispecies_submodel_full_climate/convergence"), 
+             format = "file"),
+  tar_target(fig_convergence_full_sub_climate2, plot_convergence_climate(jags.model_full_sub_climate2, data_jags_full_sub_climate, 
+                                                                        disturbance_species_info_climate, "fig/real_data/multispecies_submodel_full_climate2/convergence"), 
              format = "file"),
   tar_target(fig_convergence_full_sub_climate_simulated, plot_convergence_climate(jags.model_full_sub_climate_simulated, data_jags_full_sub_climate_simulated, 
                                                                   disturbance_species_info_climate, "fig/simulated_data/multispecies_submodel_full_climate/convergence"), 

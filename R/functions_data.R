@@ -834,19 +834,13 @@ get_disturbance_sensivity <- function(jags.model, data_jags, data_model_scaled, 
 #' @param bark.thickness_file file containing data on bark thickness
 #' @param wood.density_file file containing data on wood density
 #' @param species.in character vector of all the species for which to extract the data
-compile_traits <- function(bark.thickness_file, wood.density_file, shade.tolerance_file, root.depth_file, species.in){
+compile_traits <- function(wood.density_file, shade.tolerance_file, root.depth_file, species.in){
   
   # Wood density (Chave et al. 2008 + Dryad to quote)
   wood.density <- read_xls(wood.density_file, sheet = "Data")
   colnames(wood.density) <- c("n", "family", "species", "wood.density_g.cm3", "region", "reference")
   
-  # Bark thickness (Bouvet & Deleuze 2013)
-  bark.thickness <- fread(bark.thickness_file) %>%
-    gather(key = "variable", value = "value", colnames(.)[which(colnames(.) != "species")]) %>%
-    mutate(value = as.numeric(gsub("\\,", "\\.", value))) %>%
-    spread(key = "variable", value = "value")
-  
-  # Bark thickness (Niimenets)
+  # Shade tolerance (Niimenets)
   shade.tolerance <- fread(shade.tolerance_file) %>%
     mutate(shade.tolerance = as.numeric(gsub("\\,", "\\.", shade.tolerance.mean))) %>%
     dplyr::select(species, shade.tolerance)
@@ -866,8 +860,6 @@ compile_traits <- function(bark.thickness_file, wood.density_file, shade.toleran
                  group_by(species) %>%
                  summarize(wood.density_g.cm3 = mean(wood.density_g.cm3))),
               by = "species") %>%
-    # Add bark thickness
-    left_join(bark.thickness, by = "species") %>%
     # Add shade tolerance
     left_join(shade.tolerance, by = "species") %>%
     # Add root depth
@@ -878,11 +870,60 @@ compile_traits <- function(bark.thickness_file, wood.density_file, shade.toleran
 
 #' Compile traits related to the climatic conditions eahc species is exposed to
 #' @param data_model Data frame used to fit the model, with variables unscaled
-compile_traits_climate <- function(data_model){
+#' @param gbif_file File containing gbif climatic data
+compile_traits_climate <- function(data_model, gbif_file){
+  
+  gbif_data <- fread(gbif_file) %>%
+    dplyr::select(species, mean_mat, mean_tmin, mean_map)
   
   data_model %>%
     group_by(species) %>%
     summarize(sgdd.mean = mean(sgdd, na.rm = TRUE), 
               wai.mean = mean(wai, na.rm = TRUE), 
-              comp.mean = mean(comp, na.rm = TRUE))
+              comp.mean = mean(comp, na.rm = TRUE)) %>%
+    left_join(gbif_data, by = "species")
 }
+
+
+#' Compile all traits data
+#' @param TRY_file file containing TRY request
+#' @param species.in character vector of all the species for which to extract the data
+compile_traits_TRY <- function(TRY_file, species.in){
+  
+  # -- Translate TRY traits code into abbreviated traits name
+  TRY.traits.name <- data.frame(
+    TraitID = c(24, 3117, 146, 14, 56, 15, 46, 65, 1111, 2809, 2807, 2808, 159, 30, 318, 
+                31, 719, 59, 819, 45, 773, 413, 324, 1229, 153, 865, 837, 3446), 
+    trait = c("bark.thickness", "leaf.sla", "leaf.CN.ratio", "leaf.N.mass", "leaf.NP.ratio", 
+              "leaf.P.mass", "leaf.thickness", "root.type", "seedbank.density", 
+              "seedbank.duration", "seedbank.n.layers", "seedbank.thickness.toplayer", 
+              "seedbank.type", "tolerance.drought", "tolerance.fire", "tolerance.frost", 
+              "xylem.hydraulic.vulnerability", "plant.lifespan", "plant.resprouting.capacity", 
+              "stomata.conductance", "crown.height", "leaf.Chl.content", "crown.length", 
+              "wood.Nmass", "budbank.height.distribution", "budbank.seasonality", 
+              "bark.structure", "plant.biomass")
+  )
+  
+  
+  
+  ## -- Compile numeric traits data
+  traits.TRY <-data.table::fread(TRY_file) %>%
+    filter(!is.na(TraitID)) %>%
+    filter(!is.na(StdValue)) %>%
+    filter(AccSpeciesName %in% species.in) %>%
+    left_join(TRY.traits.name, by = "TraitID") %>%
+    mutate(trait = paste("TRY", trait, gsub("\\ ", "", UnitName), sep = "_"), 
+           trait = gsub("\\/", ".", trait)) %>%
+    rename("species" = "AccSpeciesName") %>%
+    group_by(species, trait) %>%
+    summarize(trait.value = mean(StdValue, na.rm = TRUE)) %>%
+    ungroup() %>%
+    group_by(trait) %>%
+    mutate(n.species.per.trait = n()) %>%
+    filter(n.species.per.trait >= 10) %>% 
+    dplyr::select(-n.species.per.trait) %>%
+    spread(key = trait, value = trait.value)  
+  
+  return(traits.TRY)
+}
+

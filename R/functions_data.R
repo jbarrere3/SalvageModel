@@ -196,6 +196,27 @@ scale_data_model <- function(data_model,
 }
 
 
+#' Center and Scale variables before fitting a model
+#' @param data_model Tree data formated for the IPM. 
+#' @param var Variables to scale (character vector)
+scale_data_model_quadra <- function(data_model, 
+                             var = c("dbh", "comp", "sgdd", "wai", "DA.Senf", "DS.Senf", "DS")){
+  id_var <- which(colnames(data_model) %in% var) 
+  if("DS" %in% var) out <- data_model %>% mutate(DS = ifelse(DS == 0, NA_real_, DS))
+  else out <- data_model
+  unscaled = as.matrix(out[, id_var])
+  scaled = scale(unscaled)
+  out[, id_var] <- as.data.frame(scaled)
+  if("DS" %in% var) out$DS[which(is.na(out$DS))] <- -99
+  # dbh is logged in BM equation, so need to make it positive
+  if("dbh" %in% var) if(min(out$dbh) < 0) out$dbh <- out$dbh - min(out$dbh) + 0.01 
+  # same for quadra diff and quadratic diameter
+  if("quadra.diff" %in% var) if(min(out$quadra.diff) < 0) out$quadra.diff <- out$quadra.diff - min(out$quadra.diff) + 0.01 
+  if("dquadra" %in% var) if(min(out$dquadra) < 0) out$dquadra <- out$dquadra - min(out$dquadra) + 0.01 
+  colnames(out) <- colnames(data_model)
+  return(out)
+}
+
 
 
 
@@ -388,6 +409,70 @@ generate_data_jags_full_sub_climate <- function(data){
 }
 
 
+#' generate data for the jags model using real data for the model taking quadratic diameter 
+#' into account (specific to storm thus)
+#' @param data dataset where the tree status (dead, alive or harvested) is not simulated
+#' @author Björn Reineking, Julien Barrere
+generate_data_jags_quadra <- function(data){
+  
+  # Remove undisturbed plots
+  data_sub <- data %>% filter(Dstorm == 1)
+  
+  # Replace plotcode by a number
+  plotcode.table <- data.frame(plotcode = unique(data_sub$plotcode), 
+                               plot = c(1:length(unique(data_sub$plotcode))))
+  
+  # Replace species by a number 
+  species.table <- data.frame(species = unique(data_sub$species), 
+                              sp = c(1:length(unique(data_sub$species))))
+  
+  # Identify storm-disturbed spruce-dominated plots with 100% mortality
+  plots.reference.storm <- (data %>%
+                              filter(Dstorm == 1) %>%
+                              group_by(plotcode, species) %>%
+                              mutate(dead = ifelse(a == 0, 1, 0)) %>%
+                              summarize(n = n(), n.dead = sum(dead)) %>%
+                              ungroup() %>%
+                              group_by(plotcode) %>%
+                              mutate(prop.species = n/sum(n), 
+                                     prop.species.dead = n.dead/n) %>%
+                              filter(species == "Picea abies" & prop.species > 0.8 & prop.species.dead == 1))$plotcode
+  
+  
+  # Format final data
+  data.in <- data_sub %>%
+    # Set disturbance intensity for storm and other
+    mutate(Istorm = ifelse(plotcode %in% plots.reference.storm, 0.7, NA_real_)) %>%
+    # Determine if tree is dead or not
+    mutate(d = ifelse(a == 1, 0, 1)) %>%
+    # Add plot code
+    left_join(plotcode.table, by = "plotcode") %>%
+    # Add species code
+    left_join(species.table, by = "species")
+  
+  
+  
+  # Create the output list
+  data_jags <- list(
+    Ntrees = NROW(data.in),
+    Nplot = NROW(plotcode.table), 
+    Nspecies = NROW(species.table),
+    plot = data.in$plot, 
+    sp = data.in$sp,
+    d = data.in$d,
+    time = data.in$time,
+    dbh = data.in$dbh,
+    qdiff = data.in$quadra.diff,
+    dquadra = data.in$dquadra,
+    Istorm = data.in$Istorm)
+  
+  # Final output
+  out <- list(data_jags, plotcode.table, species.table)
+  names(out) = c("data_jags", "plotcode_table", "species_table")
+  return(out)
+}
+
+
 
 
 #' Get family and order for each species present in the dataset
@@ -504,6 +589,24 @@ generate_parameters_sp_climate <- function(data.jags.in, param = c(paste0("st", 
   return(out)
 }
 
+#' Generate species-specific parameters to simulate data
+#' @param data.jags.in dataframe containing plot and tree variable centered and scaled
+#' @param param character vector containing the name of all the parameters to initialize
+generate_parameters_sp_quadra <- function(data.jags.in, param = paste0("c", c(0:3))){
+  out <- data.frame(sp = data.jags.in$species_table$sp)
+  for(i in 1:length(param)){
+    # intercept
+    if(param[i] == "c0") out$value <- round(runif(dim(out)[1], -6, -4), digits = 3)
+    # multiplicative parameter
+    if(param[i] == "c1") out$value <- round(runif(dim(out)[1], 3, 6), digits = 3)
+    # dbh or dquadra effect
+    if(param[i] == "c2") out$value <- round(rnorm(dim(out)[1], mean = 0, sd = 0.5), digits = 1)
+    # quadradiff effect
+    if(param[i] == "c3") out$value <- round(rnorm(dim(out)[1], mean = 0, sd = 0.5), digits = 1)
+    colnames(out)[i+1] <- param[i]
+  }
+  return(out)
+}
 
 
 
@@ -654,6 +757,79 @@ simulate_status_full_sub_climate <- function(data.jags.in, parameters_sp){
   out$data_jags$Istorm = newstatus.table$Istorm
   out$data_jags$Iother = newstatus.table$Iother
   out$data_jags$Ifire = newstatus.table$Ifire
+  # Add tree status
+  out$data_jags$d <- newstatus.table$d
+  
+  return(out)
+}
+
+
+#' Simulate tree status data for the jags model with quadratic diameter taken into account
+#' @param data.jags.in dataframe containing plot and tree variable centered and scaled
+#' @param parameters_sp dataframe containing the parameters value per species
+#' @param model.in numeric (1 or 2) indicating the model for which we want to simulate data
+#' @author Björn Reineking, Julien Barrere
+simulate_status_quadra <- function(data.jags.in, parameters_sp, model.in){
+  
+  
+  
+  # species table extended with parameters value
+  species.table.extended <- data.jags.in$species_table %>%
+    left_join(parameters_sp, by = "sp")
+  
+  # plot table extended with disturbance intensity
+  plot.table.extended <- data.frame(plot = data.jags.in$data_jags$plot, 
+                                    d = data.jags.in$data_jags$d) %>%
+    group_by(plot) %>%
+    summarise(severity = sum(d)/n()) %>%
+    ungroup() %>%
+    mutate(severity = case_when(severity < 0.001 ~ 0.001, 
+                                severity> 0.999 ~ 0.999, 
+                                TRUE ~ severity))
+  # Identify the distribution of disturbance severity
+  fitted.distr <- MASS::fitdistr(plot.table.extended$severity, 
+                                 densfun = "beta", 
+                                 start = list(shape1 = 1, shape2 = 2))$estimate
+  # Simulate intensity with the same distribution as severity
+  plot.table.extended <- plot.table.extended %>%
+    mutate(Intensity <- rbeta(dim(.)[1], fitted.distr[1], fitted.distr[2]),
+           Intensity = case_when(Intensity < 0.001 ~ 0.001, 
+                                 Intensity> 0.999 ~ 0.999, 
+                                 TRUE ~ Intensity))  %>%
+    dplyr::select(plot, Intensity)
+  
+  # Calculate the state for each tree
+  newstatus.table <- data.frame(plot = data.jags.in$data_jags$plot, 
+                                sp = data.jags.in$data_jags$sp, 
+                                time = data.jags.in$data_jags$time, 
+                                dbh = data.jags.in$data_jags$dbh, 
+                                qdiff = data.jags.in$data_jags$qdiff, 
+                                dquadra = data.jags.in$data_jags$dquadra) %>%
+    # Add species parameter
+    left_join(species.table.extended, by = "sp") %>%
+    # Add intensity
+    left_join(plot.table.extended, by = "plot") 
+  
+  # Simulate status for the first model
+  if(model.in == 1){ 
+    newstatus.table <- newstatus.table %>%
+      mutate(pdD = 1 - (1 - plogis(c0 + c1*Intensity*(dbh^c2)*(qdiff*c3)))^time, 
+             d = NA_integer_)}
+  # Simulate status for the second model
+  if(model.in == 2){ 
+    newstatus.table <- newstatus.table %>%
+      mutate(pdD = 1 - (1 - plogis(c0 + c1*Intensity*(dquadra^c2)*(qdiff*c3)))^time, 
+             d = NA_integer_)}
+  
+  
+  
+  # death probability
+  for(i in 1:dim(newstatus.table)[1]) newstatus.table$d[i] <- rbinom(1, 1, newstatus.table$pdD[i])
+  
+  # Final output
+  out <- data.jags.in
+  # Add disturbance intensity
+  out$data_jags$Istorm = newstatus.table$Intensity
   # Add tree status
   out$data_jags$d <- newstatus.table$d
   
@@ -927,3 +1103,14 @@ compile_traits_TRY <- function(TRY_file, species.in){
   return(traits.TRY)
 }
 
+
+
+
+#' Add the difference between dbh and quadratic diameter in data model
+#' @param data_model
+add_quadra.diff_data_model <- function(data_model){
+  data_model %>%
+    group_by(plotcode) %>% 
+    mutate(quadra.diff = dbh - mean(dbh), 
+           dquadra = mean(dbh))
+} 

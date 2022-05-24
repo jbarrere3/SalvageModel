@@ -467,5 +467,188 @@ fit_mortality_full_sub_climate_simulated <- function(data_jags.in, n.chains, n.i
 
 
 
+#' Fit the mortality model taking into account quadratic diameter
+#' @param data_jags.in List containing all the inputs of the model
+#' @param model.in Type of model to fit (1 or 2)
+#' @param n.chains numeric: Number of MCMC Markov chains
+#' @param n.iter numeric: Number of iterations
+#' @param n.burn numeric: Burn-in
+#' @param n.thin numeric: Thinning rate
+#' @return A rjags object
+fit_mortality_quadra_simulated <- function(data_jags.in, model.in, n.chains, n.iter, n.burn, n.thin){
+  
+  # Initialize time
+  start <- Sys.time()
+  
+  
+  ## - Write the model
+  # Model 1
+  if(model.in == 1){
+    mortality_model <- 
+      "model{
+    for (i in 1:Ntrees) {
+    
+      # Probability that the tree died from a disturbance
+      d[i] ~ dbern(pd[i])
+      logit(pdD[i]) = c0[sp[i]] + (c1[sp[i]]*Istorm[i]*(dbh[i]^c2[sp[i]])*(qdiff[i]^c3[sp[i]]))
+      pd[i] = 1 - (1 - pdD[i])^time[i]
+    }
+    
+    ## - Priors
+    # Priors at species level
+    for(s in 1:Nspecies){
+      c0[s] ~ dnorm(0, 0.1)
+      c1[s] ~ dnorm(0, 0.1) T(0.01, 100)
+      c2[s] ~ dnorm(0, 1) 
+      c3[s] ~ dnorm(0, 1) 
+
+    }
+  }"
+  }
+  # Model 2
+  if(model.in == 2){
+    mortality_model <- 
+      "model{
+    for (i in 1:Ntrees) {
+    
+      # Probability that the tree died from a disturbance
+      d[i] ~ dbern(pd[i])
+      logit(pdD[i]) = c0[sp[i]] + (c1[sp[i]]*Istorm[i]*(dquadra[i]^c2[sp[i]])*(qdiff[i]^c3[sp[i]]))
+      pd[i] = 1 - (1 - pdD[i])^time[i]
+    }
+    
+    ## - Priors
+    # Priors at species level
+    for(s in 1:Nspecies){
+      c0[s] ~ dnorm(0, 0.1)
+      c1[s] ~ dnorm(0, 0.1) T(0.01, 100)
+      c2[s] ~ dnorm(0, 1) 
+      c3[s] ~ dnorm(0, 1) 
+
+    }
+  }"
+  }
+  
+  
+  
+  ## - Fit the model in parallel
+  tmp <- tempfile()
+  writeLines(mortality_model, tmp)
+  out <- R2jags::jags.parallel(data = data_jags.in,
+                               param = paste0("c", c(0:3)),
+                               model.file = tmp,
+                               n.chains = n.chains,
+                               n.iter = n.iter,
+                               n.burnin = n.burn,
+                               n.thin = n.thin,
+                               DIC = TRUE)
+  
+  # Print the computation time
+  stop <- Sys.time()
+  print(paste0("Computation time: ", 
+               round(as.numeric(difftime(stop, start, units = "mins")), digits = 1), 
+               " min."))
+  
+  return(out)
+}
+
+#' Fit the mortality model taking into account quadratic diameter
+#' @param data_jags.in List containing all the inputs of the model
+#' @param model.in Type of model to fit (1 or 2)
+#' @param n.chains numeric: Number of MCMC Markov chains
+#' @param n.iter numeric: Number of iterations
+#' @param n.burn numeric: Burn-in
+#' @param n.thin numeric: Thinning rate
+#' @return A rjags object
+fit_mortality_quadra <- function(data_jags.in, model.in, n.chains, n.iter, n.burn, n.thin){
+  
+  # Initialize time
+  start <- Sys.time()
+  
+  
+  ## - Write the model
+  # Model 1
+  if(model.in == 1){
+    mortality_model <- 
+      "model{
+    for (i in 1:Ntrees) {
+    
+      # Probability that the tree died from a disturbance
+      d[i] ~ dbern(pd[i])
+      logit(pdD[i]) = c0[sp[i]] + (c1[sp[i]]*Istorm[plot[i]]*(dbh[i]^c2[sp[i]])*(qdiff[i]^c3[sp[i]]))
+      pd[i] = 1 - (1 - pdD[i])^time[i]
+    }
+    
+    ## - Priors
+    # Priors at species level
+    for(s in 1:Nspecies){
+      c0[s] ~ dnorm(0, 0.1)
+      c1[s] ~ dnorm(0, 0.1) T(0.01, 100)
+      c2[s] ~ dnorm(0, 1) 
+      c3[s] ~ dnorm(0, 1) 
+
+    }
+    
+    # Disturbance intensity at plot level
+    for(k in 1:Nplot){
+      Istorm[k] ~ dbeta(0.65, 2.66) T(0.001,0.999)
+    }
+    
+  }"
+  }
+  # Model 2
+  if(model.in == 2){
+    mortality_model <- 
+      "model{
+    for (i in 1:Ntrees) {
+    
+      # Probability that the tree died from a disturbance
+      d[i] ~ dbern(pd[i])
+      logit(pdD[i]) = c0[sp[i]] + (c1[sp[i]]*Istorm[plot[i]]*(dquadra[i]^c2[sp[i]])*(qdiff[i]^c3[sp[i]]))
+      pd[i] = 1 - (1 - pdD[i])^time[i]
+    }
+    
+    ## - Priors
+    # Priors at species level
+    for(s in 1:Nspecies){
+      c0[s] ~ dnorm(0, 0.1)
+      c1[s] ~ dnorm(0, 0.1) T(0.01, 100)
+      c2[s] ~ dnorm(0, 1) 
+      c3[s] ~ dnorm(0, 1) 
+
+    }
+    
+    # Disturbance intensity at plot level
+    for(k in 1:Nplot){
+      Istorm[k] ~ dbeta(0.65, 2.66) T(0.001,0.999)
+    }
+    
+  }"
+  }
+  
+  
+  
+  ## - Fit the model in parallel
+  tmp <- tempfile()
+  writeLines(mortality_model, tmp)
+  out <- R2jags::jags.parallel(data = data_jags.in,
+                               param = paste0("c", c(0:3)),
+                               model.file = tmp,
+                               n.chains = n.chains,
+                               n.iter = n.iter,
+                               n.burnin = n.burn,
+                               n.thin = n.thin,
+                               DIC = TRUE)
+  
+  # Print the computation time
+  stop <- Sys.time()
+  print(paste0("Computation time: ", 
+               round(as.numeric(difftime(stop, start, units = "mins")), digits = 1), 
+               " min."))
+  
+  return(out)
+}
+
+
 
 

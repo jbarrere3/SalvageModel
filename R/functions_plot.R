@@ -354,6 +354,58 @@ plot_convergence_climate <- function(jags.model, data_jags, disturbance_species_
   return(out)
 }
 
+#' Plot Markov chain convergence of a rjags object
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param dir.in Path where to save the plot
+plot_convergence_quadra <- function(jags.model, data_jags, dir.in){
+  
+  # Initialize output
+  out <- c()
+  
+  # Species included in the simulations
+  species.in <- data_jags$species_table$species
+  
+  
+  # Parameters estimated in the model
+  param.estimated <- unique((ggs(as.mcmc(jags.model)) %>%
+                               filter(Parameter != "deviance") %>%
+                               mutate(Parameter = gsub("\\[.+", "", Parameter)))$Parameter)
+  
+  
+  # Loop on all species
+  for(i in 1:length(species.in)){
+    
+    # Create directories if needed
+    file.in.i <- paste0(dir.in, "/fig_convergence_", gsub(" ", "-", species.in[i]), ".png")
+    create_dir_if_needed(file.in.i)
+    # Add to the output
+    out <- c(out, file.in.i)
+    # Get the species code
+    species.code.i <- data_jags$species_table$sp[i]
+    # Add the species code to have the complete list of columns to sample
+    param.estimated.i <- paste0(param.estimated, "[", species.code.i, "]")
+    
+    ## - Make the plot
+    plot.i <- ggs(as.mcmc(jags.model)) %>%
+      filter(Parameter %in% param.estimated.i) %>%
+      mutate(Parameter = gsub(paste0("\\[", species.code.i, "\\]"), "", Parameter), 
+             Chain = as.factor(Chain)) %>%
+      ggplot(aes(x = Iteration, y = value, colour = Chain, group = Chain)) + 
+      geom_line() + 
+      facet_wrap(~ Parameter, scales = "free") + 
+      scale_color_manual(values = c("#335C67", "#E09F3E", "#9E2A2B")) +
+      theme_bw() + 
+      ggtitle(species.in[i])
+    
+    ## - Save the plot
+    ggsave(file.in.i, plot.i, width = 17, height = 12, units = "cm", dpi = 600)
+    
+  }
+  
+  # return the name of all the plots made
+  return(out)
+}
 
 
 #' Plot harvest probability depending on dbh, disturbance and land property
@@ -573,6 +625,58 @@ plot_parameters_true_vs_estimated2 <- function(jags.model, data_jags, parameters
 
 
 
+#' Plot estimated vs true parameter value (+ prior) in the case of a model ran with simulated data
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param parameters_sp table containing the true parameters value by species
+#' @param file.in Path and file where to save the plot
+plot_parameters_true_vs_estimated2_quadra <- function(jags.model, data_jags, parameters_sp, file.in){
+  
+  ## - Create directories if needed
+  create_dir_if_needed(file.in)
+  
+  ## - make the plot
+  plot.out <- ggs(as.mcmc(jags.model)) %>%
+    filter(Parameter != "deviance") %>%
+    mutate(sp = as.integer(gsub("\\]", "", gsub(".+\\[", "", Parameter))), 
+           Parameter = gsub("\\[.+\\]", "", Parameter)) %>%
+    left_join(data_jags$species_table, by = "sp") %>% 
+    dplyr::select(-sp) %>%
+    group_by(species, Parameter) %>%
+    summarize(mean = mean(value), 
+              sd = sd(value)) %>%
+    mutate(ID = paste(species, Parameter, sep = ".")) %>%
+    left_join((data_jags$species_table %>%
+                 left_join(parameters_sp, by = "sp") %>%
+                 gather(key = "Parameter", value = "value.true", 
+                        colnames(parameters_sp)[which(colnames(parameters_sp) != "sp")]) %>%
+                 mutate(ID = paste(species, Parameter, sep = ".")) %>%
+                 dplyr::select(ID, value.true)), 
+              by = "ID") %>%
+    mutate(Parameter = factor(
+      Parameter, levels = colnames(parameters_sp)[which(colnames(parameters_sp) != "sp")])) %>%
+    filter(species != "Eucalyptus globulus") %>%
+    ggplot(aes(x = value.true, y = mean, fill = species)) + 
+    geom_errorbar(aes(ymin = mean - sd, ymax = mean+sd), 
+                  width = 0)  + 
+    geom_point(size = 1, shape = 21, color = "black") + 
+    geom_abline(intercept = 0, slope = 1) +
+    facet_wrap(~ Parameter, scales = "free", 
+               ncol = round((dim(parameters_sp)[2] - 1)/3, digits = 0)) + 
+    ylab("Estimated parameter value") + xlab("True parameter value") +
+    theme(panel.background = element_rect(color = "black", fill = "white"), 
+          strip.background = element_blank(), 
+          panel.grid = element_blank(), 
+          legend.title = element_blank(),
+          legend.text = element_text(size = 7, face = "italic"),
+          legend.key = element_rect(fill = alpha("white", 0.0))) 
+  
+  
+  ## - save the plot
+  ggsave(file.in, plot.out, width = 23, height = 14, units = "cm", dpi = 600)
+  return(file.in)
+  
+}
 
 
 
@@ -774,6 +878,96 @@ plot_prediction_full2 <- function(jags.model, data_jags, data_model_scaled, data
   # return the name of all the plots made
   return(file.in)
 }
+
+
+#' Plot death probability predicted by the model
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param data_model Tree data formatted for the IPM. 
+#' @param data_model_scaled Tree data formatted for the IPM and scaled 
+#' @param model.in Type of model fitted (1 or 2)
+#' @param file.in Name of the file to save
+plot_prediction_quadra <- function(jags.model, data_jags, data_model_scaled, 
+                                   data_model, model.in, file.in){
+  
+  # Create the diretories that are needed
+  create_dir_if_needed(file.in)
+  
+  # Identify parameters per species
+  param_per_species <- ggs(as.mcmc(jags.model)) %>%
+    filter(Parameter != "deviance") %>%
+    mutate(sp = as.integer(gsub("\\]", "", gsub(".+\\[", "", Parameter))), 
+           Parameter = gsub("\\[.+\\]", "", Parameter)) %>%
+    left_join(data_jags$species_table, by = "sp") %>% 
+    group_by(species, Parameter) %>%
+    summarize(mean = mean(value)) %>%
+    spread(key = "Parameter", value = "mean")
+  
+  # Model to scale dbh
+  scale_dbh <- lm(dbh.scaled ~ dbh, 
+                  data = data.frame(dbh = data_model$dbh, 
+                                    dbh.scaled = data_model_scaled$dbh))
+  # Model to scale qdiff
+  scale_qdiff <- lm(qdiff.scaled ~ qdiff, 
+                    data = data.frame(qdiff = data_model$quadra.diff, 
+                                      qdiff.scaled = data_model_scaled$quadra.diff))
+  
+  # Model to scale dquadra
+  scale_dquadra <- lm(dquadra.scaled ~ dquadra, 
+                    data = data.frame(dquadra = data_model$dquadra, 
+                                      dquadra.scaled = data_model_scaled$dquadra))
+  
+  
+  # - Preformat the data before plotting
+  data_for_plot <- expand.grid(species = unique(param_per_species$species), 
+                               dbh = c(151:1200), 
+                               Intensity = c(0.2, 0.8), 
+                               qdiff = c(-150, -15, 15, 150)) %>%
+    mutate(dquadra = dbh - qdiff,
+           dbh.scaled = predict(scale_dbh, newdata = .),
+           qdiff.scaled = predict(scale_qdiff, newdata = .)) %>%
+    mutate(dquadra.scaled = predict(scale_dquadra, newdata = .)) %>%
+    left_join(param_per_species, by = "species") %>%
+    mutate(pd.model1 = plogis(c0 + c1*Intensity*(dbh^c2)*(qdiff*c3)), 
+           pd.model2 = plogis(c0 + c1*Intensity*(dquadra^c2)*(qdiff*c3))) %>%
+    dplyr::select(species, dbh, Intensity, qdiff, pd.model1, pd.model2) %>%
+    left_join((data_model %>%
+                 filter(Dstorm == 1) %>%
+                 group_by(species) %>%
+                 summarize(dbh.min = min(dbh, na.rm = TRUE), 
+                           dbh.max = max(dbh, na.rm = TRUE))), 
+              by = "species") %>%
+    filter(dbh >= dbh.min & dbh <= dbh.max) 
+  if(model.in == 1) data_for_plot$pd <- data_for_plot$pd.model1
+  if(model.in == 2) data_for_plot$pd <- data_for_plot$pd.model2
+  
+  
+  # - Make the plot
+  plot.out <- data_for_plot %>%
+    filter(!is.na(pd)) %>%
+    mutate(Intensity = paste0("storm intensity = ", Intensity)) %>%
+    ggplot(aes(x = dbh, y = pd, group = interaction(Intensity, qdiff), 
+               color = qdiff, linetype = Intensity)) + 
+    geom_line() + 
+    facet_wrap(~ species) +
+    theme(panel.background = element_rect(color = "black", fill = "white"), 
+          strip.background = element_blank(), 
+          panel.grid = element_blank(), 
+          legend.key = element_blank(),
+          legend.title = element_blank()) + 
+    scale_linetype_manual(values = c("dashed", "solid")) +
+    #scale_color_manual(values = c("#F77F00", "#90A955", "#4361EE")) +
+    ylab("Probability to die from a storm") + 
+    xlab("dbh (mm)")
+  
+  
+  # - Save the three plots
+  ggsave(file.in, plot.out, width = 25, height = 20, units = "cm", dpi = 600)
+  
+  # return the name of all the plots made
+  return(file.in)
+}
+
 
 
 

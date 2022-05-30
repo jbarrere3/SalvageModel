@@ -61,11 +61,9 @@ list(
   # -- Step 2 - Prepare data for the model ----
   
   # Keep variables relevant to the model
-  tar_target(data_model, format_data_model(FUNDIV_tree_FR, FUNDIV_plot_FR, Climate, BM_equations)), 
   tar_target(data_model_full, format_data_model_full(FUNDIV_tree, FUNDIV_plot, Climate, BM_equations, species)),
   
   # Scale numeric variables
-  tar_target(data_model_scaled, scale_data_model(data_model, var = c("dbh", "comp", "sgdd", "wai", "DS"))), 
   tar_target(data_model_full_scaled, scale_data_model(data_model_full, var = c("dbh", "comp", "sgdd", "wai", "DS"))),
   
   # Prepare data as model input
@@ -75,23 +73,18 @@ list(
   tar_target(parameters_sp, generate_parameters_sp(data_jags_full_sub)),
   tar_target(data_jags_full_sub_simulated, simulate_status_full_sub(data_jags_full_sub, parameters_sp)),
   
+  # Prepare data for the model with quadratic diameter
+  tar_target(data_model_dqm, format_data_model_dqm(FUNDIV_tree, FUNDIV_plot, Climate, species)), 
+  tar_target(data_model_dqm_scaled, scale_data_model_dqm(data_model_dqm)), 
+  tar_target(data_jags_dqm, generate_data_jags_dqm(data_model_dqm_scaled)),
+  
+  
   # Simulate data for a model with a climate effect
-  tar_target(data_jags_full_sub_climate, generate_data_jags_full_sub_climate(data_model_full_scaled)),
-  tar_target(parameters_sp_climate, generate_parameters_sp_climate(data_jags_full_sub_climate)),
-  tar_target(data_jags_full_sub_climate_simulated,
-             simulate_status_full_sub_climate(data_jags_full_sub_climate, parameters_sp_climate)),
-  
-  # Simulate data for a model with the quadratic diameter taken into account
-  tar_target(data_model_quadra, add_quadra.diff_data_model(data_model_full)), 
-  tar_target(data_model_quadra_scaled, scale_data_model_quadra(
-    data_model_quadra, var = c("dbh", "comp", "sgdd", "wai", "DS", "quadra.diff", "dquadra"))),
-  tar_target(data_jags_quadra, generate_data_jags_quadra(data_model_quadra_scaled)),
-  tar_target(parameters_sp_quadra, generate_parameters_sp_quadra(data_jags_quadra)),
-  tar_target(data_jags_quadra_simulated.1, simulate_status_quadra(
-    data_jags_quadra, parameters_sp_quadra, model.in = 1)),
-  tar_target(data_jags_quadra_simulated.2, simulate_status_quadra(
-    data_jags_quadra, parameters_sp_quadra, model.in = 2)),
-  
+  # tar_target(data_jags_full_sub_climate, generate_data_jags_full_sub_climate(data_model_full_scaled)),
+  # tar_target(parameters_sp_climate, generate_parameters_sp_climate(data_jags_full_sub_climate)),
+  # tar_target(data_jags_full_sub_climate_simulated,
+  #            simulate_status_full_sub_climate(data_jags_full_sub_climate, parameters_sp_climate)),
+  # 
   
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -103,31 +96,25 @@ list(
     data_jags_full_sub$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1, param.in = paste0("c", c(0:8)))), 
   tar_target(jags.model_full_sub_I, fit_mortality_full_sub(
     data_jags_full_sub$data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 10, param.in = c("Istorm", "Ifire", "Iother"))), 
-  tar_target(jags.model_full_sub_climate, fit_mortality_full_sub_climate(
-    data_jags_full_sub_climate$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)),
-  tar_target(jags.model_full_sub_climate2, fit_mortality_full_sub_climate2(
-    data_jags_full_sub_climate$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)),
-  # - With France and Spain and simulated data
+  # tar_target(jags.model_full_sub_climate, fit_mortality_full_sub_climate(
+  #   data_jags_full_sub_climate$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)),
+  # tar_target(jags.model_full_sub_climate2, fit_mortality_full_sub_climate2(
+  #   data_jags_full_sub_climate$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)),
+  # # - With France and Spain and simulated data
   tar_target(jags.model_full_sub_simulated, fit_mortality_full_sub_simulated(
     data_jags_full_sub_simulated$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)), 
   # - With simulated data and climate included
-  tar_target(jags.model_full_sub_climate_simulated, fit_mortality_full_sub_climate_simulated(
-    data_jags_full_sub_climate_simulated$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)),
-  # - With simulated data and quadratic diameter included
-  tar_target(jags.model_quadra.1_simulated, fit_mortality_quadra_simulated(
-    data_jags_quadra_simulated.1$data_jags, model.in = 1, n.chains = 3,
-    n.iter = 1500, n.burn = 500, n.thin = 1)), 
-  tar_target(jags.model_quadra.2_simulated, fit_mortality_quadra_simulated(
-    data_jags_quadra_simulated.2$data_jags, model.in = 2, n.chains = 3,
-    n.iter = 1500, n.burn = 500, n.thin = 1)),
-  # - With real data and quadratic diameter included
-  tar_target(jags.model_quadra.1, fit_mortality_quadra(
-    data_jags_quadra$data_jags, model.in = 1, n.chains = 3,
-    n.iter = 1500, n.burn = 500, n.thin = 1)), 
-  tar_target(jags.model_quadra.2, fit_mortality_quadra(
-    data_jags_quadra$data_jags, model.in = 2, n.chains = 3,
-    n.iter = 1500, n.burn = 500, n.thin = 1)),
+  # tar_target(jags.model_full_sub_climate_simulated, fit_mortality_full_sub_climate_simulated(
+  #   data_jags_full_sub_climate_simulated$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1)),
+  # 
   
+  # Fit models with quadratic diameter included
+  tar_target(jags.model_dqm1, fit_mortality_dqm1(
+    data_jags_dqm$data_jags, n.chains = 3, n.iter = 1500, n.burn = 500, n.thin = 1)),
+  tar_target(jags.model_dqm2, fit_mortality_dqm2(
+    data_jags_dqm$data_jags, n.chains = 3, n.iter = 1500, n.burn = 500, n.thin = 1)),
+  tar_target(jags.model_dqm3, fit_mortality_dqm3(
+    data_jags_dqm$data_jags, n.chains = 3, n.iter = 1500, n.burn = 500, n.thin = 1)),
   
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -135,7 +122,8 @@ list(
   
   # Extract information on how disturbances affect each species (so that parameters that can't be estimated are not shown)
   tar_target(disturbance_species_info, get_disturbance_species_info(data_model_full)),
-  tar_target(disturbance_species_info_climate, get_disturbance_species_info_climate(data_model_full)),
+  tar_target(disturbance_species_info_dqm, get_disturbance_species_info_climate(data_model_dqm)),
+  # tar_target(disturbance_species_info_climate, get_disturbance_species_info_climate(data_model_full)),
   
   # Plot convergence 
   tar_target(fig_convergence_full_sub, plot_convergence(jags.model_full_sub, data_jags_full_sub, BM_equations, 
@@ -144,28 +132,25 @@ list(
   tar_target(fig_convergence_full_sub_simulated, plot_convergence(jags.model_full_sub_simulated, data_jags_full_sub_simulated, BM_equations, 
                                                                   disturbance_species_info, "fig/simulated_data/multispecies_submodel_full/convergence"), 
              format = "file"),
-  tar_target(fig_convergence_full_sub_climate, plot_convergence_climate(jags.model_full_sub_climate, data_jags_full_sub_climate, 
-                                                                                  disturbance_species_info_climate, "fig/real_data/multispecies_submodel_full_climate/convergence"), 
+  tar_target(fig_convergence_dqm1, plot_convergence_climate(jags.model_dqm1, data_jags_dqm, disturbance_species_info_dqm, 
+                                                            "fig/real_data/multispecies_submodel_dqm1/convergence"), 
              format = "file"),
-  tar_target(fig_convergence_full_sub_climate2, plot_convergence_climate(jags.model_full_sub_climate2, data_jags_full_sub_climate, 
-                                                                        disturbance_species_info_climate, "fig/real_data/multispecies_submodel_full_climate2/convergence"), 
+  tar_target(fig_convergence_dqm2, plot_convergence_climate(jags.model_dqm2, data_jags_dqm, disturbance_species_info_dqm, 
+                                                            "fig/real_data/multispecies_submodel_dqm2/convergence"), 
              format = "file"),
-  tar_target(fig_convergence_full_sub_climate_simulated, plot_convergence_climate(jags.model_full_sub_climate_simulated, data_jags_full_sub_climate_simulated, 
-                                                                  disturbance_species_info_climate, "fig/simulated_data/multispecies_submodel_full_climate/convergence"), 
+  tar_target(fig_convergence_dqm3, plot_convergence_climate(jags.model_dqm3, data_jags_dqm, disturbance_species_info_dqm, 
+                                                            "fig/real_data/multispecies_submodel_dqm3/convergence"), 
              format = "file"),
-  tar_target(fig_convergence_quadra.1, plot_convergence_quadra(
-    jags.model_quadra.1, data_jags_quadra, "fig/real_data/multispecies_quadra1/convergence"), 
-    format = "file"),
-  tar_target(fig_convergence_quadra.2, plot_convergence_quadra(
-    jags.model_quadra.2, data_jags_quadra, "fig/real_data/multispecies_quadra2/convergence"), 
-    format = "file"),
-  tar_target(fig_convergence_quadra_simulated.1, plot_convergence_quadra(
-    jags.model_quadra.1_simulated, data_jags_quadra_simulated.1, 
-    "fig/simulated_data/multispecies_quadra1/convergence"), format = "file"),
-  tar_target(fig_convergence_quadra_simulated.2, plot_convergence_quadra(
-    jags.model_quadra.2_simulated, data_jags_quadra_simulated.2, 
-    "fig/simulated_data/multispecies_quadra2/convergence"), format = "file"),
-  
+  # tar_target(fig_convergence_full_sub_climate, plot_convergence_climate(jags.model_full_sub_climate, data_jags_full_sub_climate, 
+  #                                                                                 disturbance_species_info_climate, "fig/real_data/multispecies_submodel_full_climate/convergence"), 
+  #            format = "file"),
+  # tar_target(fig_convergence_full_sub_climate2, plot_convergence_climate(jags.model_full_sub_climate2, data_jags_full_sub_climate, 
+  #                                                                       disturbance_species_info_climate, "fig/real_data/multispecies_submodel_full_climate2/convergence"), 
+  #            format = "file"),
+  # tar_target(fig_convergence_full_sub_climate_simulated, plot_convergence_climate(jags.model_full_sub_climate_simulated, data_jags_full_sub_climate_simulated, 
+  #                                                                 disturbance_species_info_climate, "fig/simulated_data/multispecies_submodel_full_climate/convergence"), 
+  #            format = "file"),
+  # 
   # Plot parameters per species for real data
   tar_target(fig_param_per_species_full, plot_parameters_per_species_full(jags.model_full_sub, data_jags_full_sub, disturbance_species_info, 
                                                                           "fig/real_data/multispecies_submodel_full/parameters_per_sp.png"), 
@@ -180,14 +165,6 @@ list(
     jags.model_full_sub_simulated, data_jags_full_sub_simulated, parameters_sp, 
     disturbance_species_info, "fig/simulated_data/multispecies_submodel_full/true_vs_estimated2.png"), 
     format = "file"),
-  tar_target(fig_param_true_vs_estimated2_quadra.1, plot_parameters_true_vs_estimated2_quadra(
-    jags.model_quadra.1_simulated, data_jags_quadra_simulated.1, parameters_sp_quadra, 
-    "fig/simulated_data/multispecies_quadra1/true_vs_estimated.png"), 
-    format = "file"),
-  tar_target(fig_param_true_vs_estimated2_quadra.2, plot_parameters_true_vs_estimated2_quadra(
-    jags.model_quadra.2_simulated, data_jags_quadra_simulated.2, parameters_sp_quadra, 
-    "fig/simulated_data/multispecies_quadra2/true_vs_estimated.png"), 
-    format = "file"),
   
   # Plot the predictions of the model
   tar_target(fig_prediction_full, plot_prediction_full(jags.model_full_sub, data_jags_full_sub, data_model_full_scaled, data_model_full,
@@ -196,13 +173,16 @@ list(
   tar_target(fig_prediction_full2, plot_prediction_full2(jags.model_full_sub, data_jags_full_sub, data_model_full_scaled, data_model_full,
                                                        disturbance_species_info, "fig/real_data/multispecies_submodel_full/predictions/alltypes.png"), 
              format = "file"),
-  tar_target(fig_prediction_quadra1, plot_prediction_quadra(
-    jags.model_quadra.1, data_jags_quadra, data_model_quadra_scaled, data_model_quadra,
-    model.in = 1, "fig/real_data/multispecies_quadra1/prediction.png"), format = "file"),
-  tar_target(fig_prediction_quadra2, plot_prediction_quadra(
-    jags.model_quadra.2, data_jags_quadra, data_model_quadra_scaled, data_model_quadra,
-    model.in = 2, "fig/real_data/multispecies_quadra2/prediction.png"), format = "file"),
-  
+  tar_target(fig_prediction_dqm1, plot_prediction_dqm1(jags.model_dqm1, data_jags_dqm, data_model_dqm_scaled, data_model_dqm,
+                                                          disturbance_species_info_dqm, "fig/real_data/multispecies_submodel_dqm1/predictions_alltypes.png"), 
+              format = "file"),
+  tar_target(fig_prediction_dqm2, plot_prediction_dqm2(jags.model_dqm2, data_jags_dqm, data_model_dqm_scaled, data_model_dqm,
+                                                         disturbance_species_info_dqm, "fig/real_data/multispecies_submodel_dqm2/predictions_alltypes.png"), 
+            format = "file"),
+  tar_target(fig_prediction_dqm3, plot_prediction_dqm3(jags.model_dqm3, data_jags_dqm, data_model_dqm_scaled, data_model_dqm,
+                                                       disturbance_species_info_dqm, "fig/real_data/multispecies_submodel_dqm3/predictions_alltypes.png"), 
+            format = "file"),
+  # 
   # Estimated intensity vs severity
   tar_target(fig_intensity_vs_severity, plot_intensity_vs_severity(
     jags.model_full_sub_I, data_jags_full_sub, "fig/real_data/multispecies_submodel_full/intensity_vs_severity.png"), 

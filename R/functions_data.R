@@ -15,506 +15,9 @@
 
 
 
-
-#' Format the data before fiting IPM or mortality model, with mean quadratic diameter included
-#' @param FUNDIV_tree FUNDIV tree table
-#' @param FUNDIV_plot FUNDIV plot table
-#' @param Climate dataframe containing climatic data per plot
-#' @param BM_equations dataframe indicating which background mortality to use per species
-format_data_model_dqm <- function(FUNDIV_tree, FUNDIV_plot, Climate, species){
-  
-  ## - Begin formatting final dataset
-  out <- FUNDIV_tree %>%
-    # Add plot level data 
-    left_join(Climate, by = "plotcode") %>% 
-    left_join((FUNDIV_plot %>% 
-                 dplyr::select(plotcode, time = yearsbetweensurveys, disturbance.nature)), 
-              by = "plotcode") %>% 
-    # Only keep disturbed plots since the model is only fitted with disturbed plots
-    filter(disturbance.nature != "none") %>%
-    # Remove ingrowth
-    filter(treestatus != 1) %>%
-    # Remove recruited trees that died
-    filter(dbh1 > 100) %>%
-    # Add species information
-    left_join((species %>% dplyr::select(species, group)), by = "species")
-  
-  ## - Aggregated species that are not represented well enough
-  species.aggregated <- out %>%
-    group_by(species, group, plotcode) %>% 
-    summarize(n.species.per.plotcode = n()) %>%
-    ungroup() %>%
-    group_by(species, group) %>%
-    summarize(n.per.species = sum(n.species.per.plotcode), 
-              n.plot.per.species = n()) %>%
-    mutate(enough.individuals = ifelse((n.per.species > 400 & n.plot.per.species > 30), 1, 0),
-           species.ag = case_when((enough.individuals == 0 & group == "Angiosperms") ~ "Other broadleaf", 
-                                  (enough.individuals == 0 & group == "Gymnosperms") ~ "Other conifer",
-                                  enough.individuals == 1  ~ species)) %>%
-    dplyr::select(species, species.ag)
-  
-  ## - Continue formatting fo the final table
-  out <- out %>%
-    left_join(species.aggregated, by = "species") %>%
-    # Compute basal area of competitors
-    group_by(plotcode) %>%
-    mutate(comp=sum(ba_ha1) - ba_ha1) %>%
-    # Compute stand quadratic diameter
-    filter(!is.na(weight1)) %>%
-    mutate(dbh2.W = (dbh1^2)*weight1, 
-           dqm = sqrt(sum(dbh2.W, na.rm = TRUE)/sum(weight1, na.rm  = TRUE))) %>%
-    ungroup() %>%
-    mutate(dominated = ifelse(dbh1 < dqm, 1, 0)) %>%
-    # Reformat status columns
-    mutate(h = case_when(treestatus == 3 ~ 1, T ~ 0), 
-           d = case_when(treestatus %in% c(4, 5) ~ 1, T ~ 0), 
-           a = case_when(treestatus == 2 ~ 1, T ~ 0)) %>%
-    # Reformat disturbance columns
-    mutate(disturbance.nature = ifelse(is.na(disturbance.nature), "other", disturbance.nature),
-           Dfire = ifelse(disturbance.nature == "fire", 1, 0), 
-           Dstorm = ifelse(disturbance.nature == "storm", 1, 0),
-           Dother = ifelse(disturbance.nature == "other", 1, 0), 
-           D = 1 - (1 - Dfire)*(1 - Dstorm)*(1 - Dother)) %>%
-    filter(!is.na(sgdd) & !is.na(wai) & !is.na(comp) & !is.na(species.ag)) %>%
-    # Select variables and remove NAs
-    dplyr::select(plotcode, treecode, species = species.ag, time, h, d, a, dbh = dbh1, comp, 
-                  sgdd, wai, dqm, D, Dfire, Dstorm, Dother, dominated) 
-  
-  return(out)
-}
-
-
-
-#' Center and Scale variables before fitting one fo the models that includes dqm
-#' @param data_model Tree data formated for the IPM. 
-#' @param var Variables to scale (character vector)
-scale_data_model_dqm <- function(data_model, 
-                             var = c("dbh", "dqm", "comp", "sgdd", "wai")){
-  id_var <- which(colnames(data_model) %in% var) 
-  if("DS" %in% var) out <- data_model %>% mutate(DS = ifelse(DS == 0, NA_real_, DS))
-  else out <- data_model
-  unscaled = as.matrix(out[, id_var])
-  scaled = scale(unscaled)
-  out[, id_var] <- as.data.frame(scaled)
-  if("DS" %in% var) out$DS[which(is.na(out$DS))] <- -99
-  # dbh and dqm has a power effect, so need to make them positive
-  if("dbh" %in% var) if(min(out$dbh) < 0) out$dbh <- out$dbh - min(out$dbh) + 0.01 
-  if("dqm" %in% var) if(min(out$dqm) < 0) out$dqm <- out$dqm - min(out$dqm) + 0.01 
-  colnames(out) <- colnames(data_model)
-  return(out)
-}
-
-
-
-
-
-#' generate data for the jags model including dqm using real data
-#' @param data dataset where the tree status (dead, alive or harvested) is not simulated
-#' @param p list containing the parameters for the harvest conditional probabilities
-#' @author Björn Reineking, Julien Barrere
-generate_data_jags_dqm <- function(data){
-  
-  # Replace plotcode by a number
-  plotcode.table <- data.frame(plotcode = unique(data$plotcode), 
-                               plot = c(1:length(unique(data$plotcode))))
-  
-  # Replace species by a number 
-  species.table <- data.frame(species = unique(data$species), 
-                              sp = c(1:length(unique(data$species))))
-  
-  # Identify other-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.other <- (data %>%
-                              filter(Dother == 1) %>%
-                              group_by(plotcode, species) %>%
-                              mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                              summarize(n = n(), n.dead = sum(dead)) %>%
-                              ungroup() %>%
-                              group_by(plotcode) %>%
-                              mutate(prop.species = n/sum(n), 
-                                     prop.species.dead = n.dead/n) %>%
-                              filter(species == "Picea abies" & prop.species == 1 & prop.species.dead == 1))$plotcode 
-  
-  # Identify storm-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.storm <- (data %>%
-                              filter(Dstorm == 1) %>%
-                              group_by(plotcode, species) %>%
-                              mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                              summarize(n = n(), n.dead = sum(dead)) %>%
-                              ungroup() %>%
-                              group_by(plotcode) %>%
-                              mutate(prop.species = n/sum(n), 
-                                     prop.species.dead = n.dead/n) %>%
-                              filter(species == "Picea abies" & prop.species > 0.8 & prop.species.dead == 1))$plotcode
-  
-  # Identify storm-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.fire <- (data %>%
-                             filter(Dfire == 1) %>%
-                             group_by(plotcode, species) %>%
-                             mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                             summarize(n = n(), n.dead = sum(dead)) %>%
-                             ungroup() %>%
-                             group_by(plotcode) %>%
-                             mutate(prop.species = n/sum(n), 
-                                    prop.species.dead = n.dead/n) %>%
-                             filter(species == "Pinus halepensis" & prop.species == 1 & 
-                                      prop.species.dead == 1 & n > 25))$plotcode
-  
-  # Format final data
-  data.in <- data %>%
-    # Set disturbance intensity for storm and other
-    mutate(Ifire = ifelse(plotcode %in% plots.reference.fire, 0.7, NA_real_),
-           Istorm = ifelse(plotcode %in% plots.reference.storm, 0.7, NA_real_),
-           Iother = ifelse(plotcode %in% plots.reference.other, 0.7, NA_real_)) %>%
-    # Determine if tree is dead or not
-    mutate(d = ifelse(a == 1, 0, 1)) %>%
-    # Add plot code
-    left_join(plotcode.table, by = "plotcode") %>%
-    # Add species code
-    left_join(species.table, by = "species")
-  
-  
-  
-  # Create the output list
-  data_jags <- list(
-    Ntrees = NROW(data.in),
-    Nplot = NROW(plotcode.table), 
-    Nspecies = NROW(species.table),
-    plot = data.in$plot, 
-    sp = data.in$sp,
-    d = data.in$d,
-    time = data.in$time,
-    dbh = data.in$dbh,
-    dqm = data.in$dqm,
-    domi = data.in$dominated,
-    Dfire = data.in$Dfire, 
-    Dstorm = data.in$Dstorm, 
-    Dother = data.in$Dother, 
-    Ifire = data.in$Ifire, 
-    Istorm = data.in$Istorm, 
-    Iother = data.in$Iother)
-  
-  # Final output
-  out <- list(data_jags, plotcode.table, species.table)
-  names(out) = c("data_jags", "plotcode_table", "species_table")
-  return(out)
-}
-
-#' generate data for the jags model including dqm using real data
-#' @param data dataset where the tree status (dead, alive or harvested) is not simulated
-#' @param p list containing the parameters for the harvest conditional probabilities
-#' @author Björn Reineking, Julien Barrere
-generate_data_jags_dqm2 <- function(data, data_scaled){
-  
-  # Replace plotcode by a number
-  plotcode.table <- data.frame(plotcode = unique(data_scaled$plotcode), 
-                               plot = c(1:length(unique(data_scaled$plotcode))))
-  
-  # Replace species by a number 
-  species.table <- data.frame(species = unique(data_scaled$species), 
-                              sp = c(1:length(unique(data_scaled$species))))
-  
-  # Calculate a weight per treecode based on diameter class
-  weight.per.treecode <- data %>%
-    mutate(dbh.min = floor(dbh/100)*100, 
-           dbh.max = dbh.min + 100) %>%
-    group_by(dbh.min, dbh.max) %>%
-    mutate(w = 1/n()) %>%
-    ungroup() %>%
-    dplyr::select(treecode, w)
-  
-  # Identify other-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.other <- (data_scaled %>%
-                              filter(Dother == 1) %>%
-                              group_by(plotcode, species) %>%
-                              mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                              summarize(n = n(), n.dead = sum(dead)) %>%
-                              ungroup() %>%
-                              group_by(plotcode) %>%
-                              mutate(prop.species = n/sum(n), 
-                                     prop.species.dead = n.dead/n) %>%
-                              filter(species == "Picea abies" & prop.species == 1 & prop.species.dead == 1))$plotcode 
-  
-  # Identify storm-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.storm <- (data_scaled %>%
-                              filter(Dstorm == 1) %>%
-                              group_by(plotcode, species) %>%
-                              mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                              summarize(n = n(), n.dead = sum(dead)) %>%
-                              ungroup() %>%
-                              group_by(plotcode) %>%
-                              mutate(prop.species = n/sum(n), 
-                                     prop.species.dead = n.dead/n) %>%
-                              filter(species == "Picea abies" & prop.species > 0.8 & prop.species.dead == 1))$plotcode
-  
-  # Identify storm-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.fire <- (data_scaled %>%
-                             filter(Dfire == 1) %>%
-                             group_by(plotcode, species) %>%
-                             mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                             summarize(n = n(), n.dead = sum(dead)) %>%
-                             ungroup() %>%
-                             group_by(plotcode) %>%
-                             mutate(prop.species = n/sum(n), 
-                                    prop.species.dead = n.dead/n) %>%
-                             filter(species == "Pinus halepensis" & prop.species == 1 & 
-                                      prop.species.dead == 1 & n > 25))$plotcode
-  
-  # Format final data
-  data.in <- data_scaled %>%
-    # Set disturbance intensity for storm and other
-    mutate(Ifire = ifelse(plotcode %in% plots.reference.fire, 0.7, NA_real_),
-           Istorm = ifelse(plotcode %in% plots.reference.storm, 0.7, NA_real_),
-           Iother = ifelse(plotcode %in% plots.reference.other, 0.7, NA_real_)) %>%
-    # Determine if tree is dead or not
-    mutate(d = ifelse(a == 1, 0, 1)) %>%
-    # Add plot code
-    left_join(plotcode.table, by = "plotcode") %>%
-    # Add species code
-    left_join(species.table, by = "species") %>%
-    # Add weight
-    left_join(weight.per.treecode, by = "treecode")
-  
-  
-  
-  # Create the output list
-  data_jags <- list(
-    Ntrees = NROW(data.in),
-    Nplot = NROW(plotcode.table), 
-    Nspecies = NROW(species.table),
-    plot = data.in$plot, 
-    sp = data.in$sp,
-    d = data.in$d,
-    time = data.in$time,
-    dbh = data.in$dbh,
-    dqm = data.in$dqm,
-    domi = data.in$dominated,
-    Dfire = data.in$Dfire, 
-    Dstorm = data.in$Dstorm, 
-    Dother = data.in$Dother, 
-    Ifire = data.in$Ifire, 
-    Istorm = data.in$Istorm, 
-    Iother = data.in$Iother, 
-    w = data.in$w)
-  
-  # Final output
-  out <- list(data_jags, plotcode.table, species.table)
-  names(out) = c("data_jags", "plotcode_table", "species_table")
-  return(out)
-}
-
-
-
-#' generate data for the jags model including dqm using real data
-#' @param data dataset where the tree status (dead, alive or harvested) is not simulated
-#' @param p list containing the parameters for the harvest conditional probabilities
-#' @author Björn Reineking, Julien Barrere
-generate_data_jags_dqm3 <- function(data, data_scaled){
-  
-  # Replace plotcode by a number
-  plotcode.table <- data.frame(plotcode = unique(data_scaled$plotcode), 
-                               plot = c(1:length(unique(data_scaled$plotcode))))
-  
-  # Replace species by a number 
-  species.table <- data.frame(species = unique(data_scaled$species), 
-                              sp = c(1:length(unique(data_scaled$species))))
-  
-  # Calculate a weight per treecode based on diameter class
-  weight.per.treecode <- data %>%
-    mutate(w = case_when(dbh < as.numeric(quantile(dbh, c(0.5))) ~ 1, 
-                         dbh > as.numeric(quantile(dbh, c(0.8333))) ~ 3, 
-                         TRUE ~ 2)) %>%
-    dplyr::select(treecode, w)
-  
-  # Identify other-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.other <- (data_scaled %>%
-                              filter(Dother == 1) %>%
-                              group_by(plotcode, species) %>%
-                              mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                              dplyr::summarize(n = n(), n.dead = sum(dead)) %>%
-                              ungroup() %>%
-                              group_by(plotcode) %>%
-                              mutate(prop.species = n/sum(n), 
-                                     prop.species.dead = n.dead/n) %>%
-                              filter(species == "Picea abies" & prop.species == 1 & prop.species.dead == 1))$plotcode 
-  
-  # Identify storm-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.storm <- (data_scaled %>%
-                              filter(Dstorm == 1) %>%
-                              group_by(plotcode, species) %>%
-                              mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                              dplyr::summarize(n = n(), n.dead = sum(dead)) %>%
-                              ungroup() %>%
-                              group_by(plotcode) %>%
-                              mutate(prop.species = n/sum(n), 
-                                     prop.species.dead = n.dead/n) %>%
-                              filter(species == "Picea abies" & prop.species > 0.8 & prop.species.dead == 1))$plotcode
-  
-  # Identify storm-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.fire <- (data_scaled %>%
-                             filter(Dfire == 1) %>%
-                             group_by(plotcode, species) %>%
-                             mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                             dplyr::summarize(n = n(), n.dead = sum(dead)) %>%
-                             ungroup() %>%
-                             group_by(plotcode) %>%
-                             mutate(prop.species = n/sum(n), 
-                                    prop.species.dead = n.dead/n) %>%
-                             filter(species == "Pinus halepensis" & prop.species == 1 & 
-                                      prop.species.dead == 1 & n > 25))$plotcode
-  
-  # Format final data
-  data.in <- data_scaled %>%
-    # Set disturbance intensity for storm and other
-    mutate(Ifire = ifelse(plotcode %in% plots.reference.fire, 0.7, NA_real_),
-           Istorm = ifelse(plotcode %in% plots.reference.storm, 0.7, NA_real_),
-           Iother = ifelse(plotcode %in% plots.reference.other, 0.7, NA_real_)) %>%
-    # Determine if tree is dead or not
-    mutate(d = ifelse(a == 1, 0, 1)) %>%
-    # Add plot code
-    left_join(plotcode.table, by = "plotcode") %>%
-    # Add species code
-    left_join(species.table, by = "species") %>%
-    # Add weight
-    left_join(weight.per.treecode, by = "treecode")
-  
-  
-  
-  # Create the output list
-  data_jags <- list(
-    Ntrees = NROW(data.in),
-    Nplot = NROW(plotcode.table), 
-    Nspecies = NROW(species.table),
-    plot = data.in$plot, 
-    sp = data.in$sp,
-    d = data.in$d,
-    time = data.in$time,
-    dbh = data.in$dbh,
-    dqm = data.in$dqm,
-    domi = data.in$dominated,
-    Dfire = data.in$Dfire, 
-    Dstorm = data.in$Dstorm, 
-    Dother = data.in$Dother, 
-    Ifire = data.in$Ifire, 
-    Istorm = data.in$Istorm, 
-    Iother = data.in$Iother, 
-    w = data.in$w)
-  
-  # Final output
-  out <- list(data_jags, plotcode.table, species.table)
-  names(out) = c("data_jags", "plotcode_table", "species_table")
-  return(out)
-}
-
-
-
-
-
-#' generate data for the jags model including dqm and climate effect using real data
-#' @param data dataset where the tree status (dead, alive or harvested) is not simulated
-#' @param p list containing the parameters for the harvest conditional probabilities
-#' @author Björn Reineking, Julien Barrere
-generate_data_jags_dqm3_climate <- function(data, data_scaled){
-  
-  # Replace plotcode by a number
-  plotcode.table <- data.frame(plotcode = unique(data_scaled$plotcode), 
-                               plot = c(1:length(unique(data_scaled$plotcode))))
-  
-  # Replace species by a number 
-  species.table <- data.frame(species = unique(data_scaled$species), 
-                              sp = c(1:length(unique(data_scaled$species))))
-  
-  # Calculate a weight per treecode based on diameter class
-  weight.per.treecode <- data %>%
-    mutate(w = case_when(dbh < as.numeric(quantile(dbh, c(0.5))) ~ 1, 
-                         dbh > as.numeric(quantile(dbh, c(0.8333))) ~ 3, 
-                         TRUE ~ 2)) %>%
-    dplyr::select(treecode, w)
-  
-  # Identify other-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.other <- (data_scaled %>%
-                              filter(Dother == 1) %>%
-                              group_by(plotcode, species) %>%
-                              mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                              dplyr::summarize(n = n(), n.dead = sum(dead)) %>%
-                              ungroup() %>%
-                              group_by(plotcode) %>%
-                              mutate(prop.species = n/sum(n), 
-                                     prop.species.dead = n.dead/n) %>%
-                              filter(species == "Picea abies" & prop.species == 1 & prop.species.dead == 1))$plotcode 
-  
-  # Identify storm-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.storm <- (data_scaled %>%
-                              filter(Dstorm == 1) %>%
-                              group_by(plotcode, species) %>%
-                              mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                              dplyr::summarize(n = n(), n.dead = sum(dead)) %>%
-                              ungroup() %>%
-                              group_by(plotcode) %>%
-                              mutate(prop.species = n/sum(n), 
-                                     prop.species.dead = n.dead/n) %>%
-                              filter(species == "Picea abies" & prop.species > 0.8 & prop.species.dead == 1))$plotcode
-  
-  # Identify storm-disturbed spruce-dominated plots with 100% mortality
-  plots.reference.fire <- (data_scaled %>%
-                             filter(Dfire == 1) %>%
-                             group_by(plotcode, species) %>%
-                             mutate(dead = ifelse(a == 0, 1, 0)) %>%
-                             dplyr::summarize(n = n(), n.dead = sum(dead)) %>%
-                             ungroup() %>%
-                             group_by(plotcode) %>%
-                             mutate(prop.species = n/sum(n), 
-                                    prop.species.dead = n.dead/n) %>%
-                             filter(species == "Pinus halepensis" & prop.species == 1 & 
-                                      prop.species.dead == 1 & n > 25))$plotcode
-  
-  # Format final data
-  data.in <- data_scaled %>%
-    # Set disturbance intensity for storm and other
-    mutate(Ifire = ifelse(plotcode %in% plots.reference.fire, 0.7, NA_real_),
-           Istorm = ifelse(plotcode %in% plots.reference.storm, 0.7, NA_real_),
-           Iother = ifelse(plotcode %in% plots.reference.other, 0.7, NA_real_)) %>%
-    # Determine if tree is dead or not
-    mutate(d = ifelse(a == 1, 0, 1)) %>%
-    # Add plot code
-    left_join(plotcode.table, by = "plotcode") %>%
-    # Add species code
-    left_join(species.table, by = "species") %>%
-    # Add weight
-    left_join(weight.per.treecode, by = "treecode")
-  
-  
-  
-  # Create the output list
-  data_jags <- list(
-    Ntrees = NROW(data.in),
-    Nplot = NROW(plotcode.table), 
-    Nspecies = NROW(species.table),
-    plot = data.in$plot, 
-    sp = data.in$sp,
-    d = data.in$d,
-    time = data.in$time,
-    sgdd = data.in$sgdd,
-    dbh = data.in$dbh,
-    dqm = data.in$dqm,
-    domi = data.in$dominated,
-    Dfire = data.in$Dfire, 
-    Dstorm = data.in$Dstorm, 
-    Dother = data.in$Dother, 
-    Ifire = data.in$Ifire, 
-    Istorm = data.in$Istorm, 
-    Iother = data.in$Iother, 
-    w = data.in$w)
-  
-  # Final output
-  out <- list(data_jags, plotcode.table, species.table)
-  names(out) = c("data_jags", "plotcode_table", "species_table")
-  return(out)
-}
-
-
-
-
-
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+## Prepare data for model with real data ------------
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 
@@ -574,318 +77,176 @@ get_species_info <- function(FUNDIV_tree){
 }
 
 
-
-
-#' Generate species-specific parameters to simulate data
-#' @param data.jags.in dataframe containing plot and tree variable centered and scaled
-#' @param param character vector containing the name of all the parameters to initialize
-generate_parameters_sp <- function(data.jags.in, param = paste0("c", c(0:8))){
-  out <- data.frame(sp = data.jags.in$species_table$sp)
-  for(i in 1:length(param)){
-    # intercept
-    if(param[i] %in% c("c0", "c3", "c6")){
-      out$value <- round(runif(dim(out)[1], -6, -4), digits = 3)
-    } 
-    # multiplicative parameter
-    if(param[i] %in% c("c1", "c4", "c7")){
-      out$value <- round(runif(dim(out)[1], 3, 6), digits = 3)
-    } 
-    # power parameter
-    if(param[i] %in% c("c2", "c5", "c8")){
-      out$value <- round(rnorm(dim(out)[1], mean = 0, sd = 0.5), digits = 1)
-    } 
+#' Format the data before fitting the reference mortality model
+#' @param FUNDIV_tree FUNDIV tree table
+#' @param FUNDIV_plot FUNDIV plot table
+#' @param Climate dataframe containing climatic data per plot
+#' @param species dataframe containing species information
+format_data_model <- function(FUNDIV_tree, FUNDIV_plot, Climate, species){
+  
+  ## - Begin formatting final dataset
+  data <- FUNDIV_tree %>%
+    # Add plot level data 
+    left_join(Climate, by = "plotcode") %>% 
+    left_join((FUNDIV_plot %>% 
+                 dplyr::select(plotcode, time = yearsbetweensurveys, disturbance.nature)), 
+              by = "plotcode") %>% 
+    # Only keep disturbed plots since the model is only fitted with disturbed plots
+    filter(disturbance.nature != "none") %>%
+    # Remove ingrowth
+    filter(treestatus != 1) %>%
+    # Remove recruited trees that died
+    filter(dbh1 > 100) %>%
+    # Add species information
+    left_join((species %>% dplyr::select(species, group)), by = "species")
+  
+  ## - Aggregated species that are not represented well enough
+  species.aggregated <- data %>%
+    group_by(species, group, plotcode, disturbance.nature) %>% 
+    summarize(n.indiv.per.plotcode = n()) %>%
+    ungroup() %>%
+    group_by(species, group, disturbance.nature) %>%
+    summarize(n.per.species = sum(n.indiv.per.plotcode), 
+              n.plot.per.species = n()) %>%
+    ungroup() %>%
+    mutate(enough.individuals = ifelse((n.per.species > 200 & n.plot.per.species > 20), 1, 0), 
+           species.ag = case_when((enough.individuals == 0 & group == "Angiosperms") ~ "Other broadleaf", 
+                                  (enough.individuals == 0 & group == "Gymnosperms") ~ "Other conifer",
+                                  enough.individuals == 1  ~ species)) %>%
+    dplyr::select(group, species, disturbance.nature, species.ag) %>%
+    filter(!(species %in% c("", " "))) %>%
+    spread(key = "disturbance.nature", value = "species.ag") %>%
+    # Replace NA by other
+    ungroup() %>%
+    gather(key = "disturbance.nature", value = "species.ag", unique(data$disturbance.nature)) %>%
+    mutate(species.ag = case_when((is.na(species.ag) & group == "Angiosperms") ~ "Other broadleaf", 
+                                  (is.na(species.ag) & group == "Gymnosperms") ~ "Other conifer", 
+                                  TRUE ~ species.ag)) %>%
+    group_by(species, disturbance.nature) %>%
+    mutate(species.ag = ifelse(length(grep("\\ ", species.ag)) == 0, paste0(species.ag, " sp"), species.ag)) %>%
+    ungroup() %>%
+    drop_na() %>%
+    spread(key = "disturbance.nature", value = "species.ag") %>%
+    dplyr::select(-group)
+  
+  ## - Initialize the list output and loop on all types of disturbance
+  out <- list()
+  disturbances.in <- unique(data$disturbance.nature)
+  for(i in 1:length(disturbances.in)){
+    # Output dataset for disturbance i
+    data.i <- data %>%
+      # Filter by disturbance nature
+      filter(disturbance.nature == disturbances.in[i]) %>%
+      # Join species aggregated table
+      left_join((species.aggregated %>% 
+                   dplyr::select("species", "species.ag" = disturbances.in[i])), 
+                by = "species") %>%
+      # Compute basal area of competitors
+      group_by(plotcode) %>%
+      mutate(comp=sum(ba_ha1) - ba_ha1) %>%
+      # Compute stand quadratic diameter
+      filter(!is.na(weight1)) %>%
+      mutate(dbh2.W = (dbh1^2)*weight1, 
+             dqm = sqrt(sum(dbh2.W, na.rm = TRUE)/sum(weight1, na.rm  = TRUE))) %>%
+      ungroup() %>%
+      # compute logratio dbh/dqm
+      mutate(log_dbh_dqm = log(dbh1/dqm)) %>%
+      # Reformat status columns
+      mutate(h = case_when(treestatus == 3 ~ 1, T ~ 0), 
+             d = case_when(treestatus %in% c(4, 5) ~ 1, T ~ 0), 
+             a = case_when(treestatus == 2 ~ 1, T ~ 0)) %>%
+      # Reformat disturbance columns
+      filter(!is.na(sgdd) & !is.na(wai) & !is.na(comp) & !is.na(species.ag)) %>%
+      # Select variables and remove NAs
+      dplyr::select(plotcode, treecode, country, species = species.ag, time, h, d, a, dbh = dbh1, comp, 
+                    sgdd, wai, dqm, log_dbh_dqm)
     
-    colnames(out)[i+1] <- param[i]
+    # Add to the output list
+    eval(parse(text = paste0("out$", disturbances.in[i], " <- data.i")))
+    
   }
-  return(out)
-}
-
-
-#' Generate species-specific parameters to simulate data
-#' @param data.jags.in dataframe containing plot and tree variable centered and scaled
-#' @param param character vector containing the name of all the parameters to initialize
-generate_parameters_sp_climate <- function(data.jags.in, param = c(paste0("st", c(0:4)), paste0("ot", c(0:4)), paste0("fi", c(0:4)))){
-  out <- data.frame(sp = data.jags.in$species_table$sp)
-  for(i in 1:length(param)){
-    # intercept
-    if(param[i] %in% paste0(c("st", "ot", "fi"), 0)){
-      out$value <- round(runif(dim(out)[1], -6, -4), digits = 3)
-    } 
-    # multiplicative parameter
-    if(param[i] %in% paste0(c("st", "ot", "fi"), 1)){
-      out$value <- round(runif(dim(out)[1], 3, 6), digits = 3)
-    } 
-    # power parameter
-    if(param[i] %in% paste0(c("st", "ot", "fi"), 2)){
-      out$value <- round(rnorm(dim(out)[1], mean = 0, sd = 0.5), digits = 1)
-    } 
-    # sgdd parameter
-    if(param[i] %in% paste0(c("st", "ot", "fi"), 3)){
-      out$value <- round(rnorm(dim(out)[1], mean = 0, sd = 1), digits = 1)
-    } 
-    # wai parameter
-    if(param[i] %in% paste0(c("st", "ot", "fi"), 4)){
-      out$value <- round(rnorm(dim(out)[1], mean = 0, sd = 1), digits = 1)
-    } 
-    colnames(out)[i+1] <- param[i]
-  }
+  
+  # return output list
   return(out)
 }
 
 
 
-
-
-#' Simulate tree status data for the jags model with disturbance given and specific background
-#' mortality equations (see supplementary of Kunstler et al. 2020 for original equations)
-#' @param data.jags.in dataframe containing plot and tree variable centered and scaled
-#' @param parameters_sp dataframe containing the parameters value per species
-#' @author Björn Reineking, Julien Barrere
-simulate_status_full_sub <- function(data.jags.in, parameters_sp){
-  
-  
-  
-  # species table extended with parameters value
-  species.table.extended <- data.jags.in$species_table %>%
-    left_join(parameters_sp, by = "sp")
-  
-  # plot table extended with disturbance intensity
-  plot.table.extended <- data.frame(plot = data.jags.in$data_jags$plot, 
-                                    d = data.jags.in$data_jags$d, 
-                                    Dfire = data.jags.in$data_jags$Dfire, 
-                                    Dstorm = data.jags.in$data_jags$Dstorm, 
-                                    Dother = data.jags.in$data_jags$Dother) %>%
-    group_by(plot, Dfire, Dstorm, Dother) %>%
-    summarise(severity = sum(d)/n()) %>%
-    ungroup() %>%
-    mutate(Intensity.fire = rbeta(dim(.)[1], 0.66, 0.36),
-           Intensity.fire = case_when(Intensity.fire < 0.001 ~ 0.001, 
-                                      Intensity.fire > 0.999 ~ 0.999, 
-                                      TRUE ~ Intensity.fire), 
-           Intensity.storm = rbeta(dim(.)[1], 0.65, 2.66),
-           Intensity.storm = case_when(Intensity.storm < 0.001 ~ 0.001, 
-                                       Intensity.storm > 0.999 ~ 0.999, 
-                                      TRUE ~ Intensity.storm), 
-           Intensity.other = rbeta(dim(.)[1], 0.48, 1.77),
-           Intensity.other = case_when(Intensity.other < 0.001 ~ 0.001, 
-                                       Intensity.other > 0.999 ~ 0.999, 
-                                      TRUE ~ Intensity.other), 
-           Ifire = Dfire*Intensity.fire, 
-           Istorm = Dstorm*Intensity.storm, 
-           Iother = Dother*Intensity.other) %>%
-    ungroup() %>%
-    dplyr::select(plot, Ifire, Istorm, Iother)
-  
-  # Calculate the state for each tree
-  newstatus.table <- data.frame(plot = data.jags.in$data_jags$plot, 
-                                sp = data.jags.in$data_jags$sp, 
-                                time = data.jags.in$data_jags$time, 
-                                dbh = data.jags.in$data_jags$dbh, 
-                                Dfire = data.jags.in$data_jags$Dfire, 
-                                Dstorm = data.jags.in$data_jags$Dstorm, 
-                                Dother = data.jags.in$data_jags$Dother) %>%
-    # Add species parameter
-    left_join(species.table.extended, by = "sp") %>%
-    # Add intensity
-    left_join(plot.table.extended, by = "plot") %>%
-    # calculate probabilities for the three different states
-    mutate(pdstorm = 1 - (1 - plogis(c0 + c1*Istorm*dbh^c2))^time, 
-           pdother = 1 - (1 - plogis(c3 + c4*Iother*dbh^c5))^time, 
-           pdfire = 1 - (1 - plogis(c6 + c7*Ifire*dbh^c8))^time, 
-           pdD = 1 - (1 - Dstorm*pdstorm)*(1 - Dother*pdother)*(1 - Dfire*pdfire), 
-           d = NA_integer_)
-  
-  # death probability
-  for(i in 1:dim(newstatus.table)[1]) newstatus.table$d[i] <- rbinom(1, 1, newstatus.table$pdD[i])
-  
-  # Final output
-  out <- data.jags.in
-  # Add disturbance intensity
-  out$data_jags$Istorm = newstatus.table$Istorm
-  out$data_jags$Iother = newstatus.table$Iother
-  out$data_jags$Ifire = newstatus.table$Ifire
-  # Add tree status
-  out$data_jags$d <- newstatus.table$d
-  
-  return(out)
-}
-
-
-#' Simulate tree status data for the jags model with disturbance given and specific background
-#' mortality equations (see supplementary of Kunstler et al. 2020 for original equations)
-#' @param data.jags.in dataframe containing plot and tree variable centered and scaled
-#' @param parameters_sp dataframe containing the parameters value per species
-#' @author Björn Reineking, Julien Barrere
-simulate_status_full_sub_climate <- function(data.jags.in, parameters_sp){
-  
-  
-  
-  # species table extended with parameters value
-  species.table.extended <- data.jags.in$species_table %>%
-    left_join(parameters_sp, by = "sp")
-  
-  # plot table extended with disturbance intensity
-  plot.table.extended <- data.frame(plot = data.jags.in$data_jags$plot, 
-                                    d = data.jags.in$data_jags$d, 
-                                    Dfire = data.jags.in$data_jags$Dfire, 
-                                    Dstorm = data.jags.in$data_jags$Dstorm, 
-                                    Dother = data.jags.in$data_jags$Dother) %>%
-    group_by(plot, Dfire, Dstorm, Dother) %>%
-    summarise(severity = sum(d)/n()) %>%
-    ungroup() %>%
-    mutate(Intensity.fire = rbeta(dim(.)[1], 0.66, 0.36),
-           Intensity.fire = case_when(Intensity.fire < 0.001 ~ 0.001, 
-                                      Intensity.fire > 0.999 ~ 0.999, 
-                                      TRUE ~ Intensity.fire), 
-           Intensity.storm = rbeta(dim(.)[1], 0.65, 2.66),
-           Intensity.storm = case_when(Intensity.storm < 0.001 ~ 0.001, 
-                                       Intensity.storm > 0.999 ~ 0.999, 
-                                       TRUE ~ Intensity.storm), 
-           Intensity.other = rbeta(dim(.)[1], 0.48, 1.77),
-           Intensity.other = case_when(Intensity.other < 0.001 ~ 0.001, 
-                                       Intensity.other > 0.999 ~ 0.999, 
-                                       TRUE ~ Intensity.other), 
-           Ifire = Dfire*Intensity.fire, 
-           Istorm = Dstorm*Intensity.storm, 
-           Iother = Dother*Intensity.other) %>%
-    ungroup() %>%
-    dplyr::select(plot, Ifire, Istorm, Iother)
-  
-  # Calculate the state for each tree
-  newstatus.table <- data.frame(plot = data.jags.in$data_jags$plot, 
-                                sp = data.jags.in$data_jags$sp, 
-                                time = data.jags.in$data_jags$time, 
-                                dbh = data.jags.in$data_jags$dbh, 
-                                sgdd = data.jags.in$data_jags$sgdd, 
-                                wai = data.jags.in$data_jags$wai, 
-                                Dfire = data.jags.in$data_jags$Dfire, 
-                                Dstorm = data.jags.in$data_jags$Dstorm, 
-                                Dother = data.jags.in$data_jags$Dother) %>%
-    # Add species parameter
-    left_join(species.table.extended, by = "sp") %>%
-    # Add intensity
-    left_join(plot.table.extended, by = "plot") %>%
-    # calculate probabilities for the three different states
-    mutate(pdstorm = 1 - (1 - plogis(st0 + st1*Istorm*dbh^st2 + st3*sgdd + st4*wai))^time, 
-           pdother = 1 - (1 - plogis(ot0 + ot1*Iother*dbh^ot2 + ot3*sgdd + ot4*wai))^time, 
-           pdfire = 1 - (1 - plogis(fi0 + fi1*Ifire*dbh^fi2 + fi3*sgdd + fi4*wai))^time, 
-           pdD = 1 - (1 - Dstorm*pdstorm)*(1 - Dother*pdother)*(1 - Dfire*pdfire), 
-           d = NA_integer_)
-  
-  # death probability
-  for(i in 1:dim(newstatus.table)[1]) newstatus.table$d[i] <- rbinom(1, 1, newstatus.table$pdD[i])
-  
-  # Final output
-  out <- data.jags.in
-  # Add disturbance intensity
-  out$data_jags$Istorm = newstatus.table$Istorm
-  out$data_jags$Iother = newstatus.table$Iother
-  out$data_jags$Ifire = newstatus.table$Ifire
-  # Add tree status
-  out$data_jags$d <- newstatus.table$d
-  
+#' Center and Scale variables before fitting one fo the models that includes dqm
+#' @param data_model Tree data formated for the IPM. 
+#' @param var Variables to scale (character vector)
+scale_data_model <- function(data_model,  var = c("dbh", "dqm", "comp", "sgdd", "wai", "log_dbh_dqm")){
+  id_var <- which(colnames(data_model) %in% var) 
+  out <- data_model
+  unscaled = as.matrix(out[, id_var])
+  scaled = scale(unscaled)
+  out[, id_var] <- as.data.frame(scaled)
+  # dbh and dqm has a power effect, so need to make them positive
+  if("dbh" %in% var) if(min(out$dbh) < 0) out$dbh <- out$dbh - min(out$dbh) + 0.01 
+  if("dqm" %in% var) if(min(out$dqm) < 0) out$dqm <- out$dqm - min(out$dqm) + 0.01 
+  colnames(out) <- colnames(data_model)
   return(out)
 }
 
 
 
-
-
-
-#' Get info on which species are affected by which disturbance, 
-#' and thus which parameters per species to keep as "robust"
-#' @param data_model dataset formatted to fit the model
-#' @return a list with two elements: 
-#'         - species_disturbance_table: table giving the n of indiv and 
-#'           plot per species affected by each type of disturbance
-#'         - species_parameter_to_keep is a vector of species-parameter combination with enough
-#'           plots and individuals
-get_disturbance_species_info <- function(data_model){
+#' generate data for the jags model
+#' @param data_model dataset where the tree status (dead, alive or harvested) is not simulated
+generate_data_jags <- function(data_model){
   
-  # Initialize output
+  # Initialize output list
   out <- list()
   
-  # Table indicating the number of individuals per species affected by each type of disturbance
-  out$species_disturbance_table <- data_model %>%
-    gather(key = "disturbance.type", value = "dist.present", "Dfire", "Dother", "Dstorm") %>%
-    filter(dist.present == 1) %>%
-    mutate(disturbance.type = gsub("D", "", disturbance.type)) %>%
-    group_by(disturbance.type, species, plotcode) %>%
-    summarize(n.indiv.per.plot = n()) %>%
-    group_by(disturbance.type, species) %>%
-    summarize(n.indiv = sum(n.indiv.per.plot), 
-              n.plot = n()) 
+  # Loop on all disturbances
+  disturbances.in <- names(data_model)
   
-  # Vector of species - parameter combination to keep
-  out$species_parameter_to_keep <- (out$species_disturbance_table %>%
-                                      filter(n.indiv > 150 & n.plot > 15) %>%
-                                      mutate(c0 = ifelse(disturbance.type == "storm", 1, 0), 
-                                             c1 = ifelse(disturbance.type == "storm", 1, 0), 
-                                             c2 = ifelse(disturbance.type == "storm", 1, 0), 
-                                             c3 = ifelse(disturbance.type == "other", 1, 0), 
-                                             c4 = ifelse(disturbance.type == "other", 1, 0), 
-                                             c5 = ifelse(disturbance.type == "other", 1, 0), 
-                                             c6 = ifelse(disturbance.type == "fire", 1, 0), 
-                                             c7 = ifelse(disturbance.type == "fire", 1, 0), 
-                                             c8 = ifelse(disturbance.type == "fire", 1, 0)) %>%
-                                      gather(key = "Parameter", value = "Present", paste0("c", c(0:8))) %>%
-                                      filter(Present == 1) %>%
-                                      mutate(ID = paste(species, Parameter, sep = ".")))$ID
-  
-  return(out)
-}
-
-
-#' Get info on which species are affected by which disturbance, 
-#' and thus which parameters per species to keep as "robust"
-#' @param data_model dataset formatted to fit the model
-#' @return a list with two elements: 
-#'         - species_disturbance_table: table giving the n of indiv and 
-#'           plot per species affected by each type of disturbance
-#'         - species_parameter_to_keep is a vector of species-parameter combination with enough
-#'           plots and individuals
-get_disturbance_species_info_climate <- function(data_model, 
-                                                 param.per.disturbance = list(storm = paste0("st", c(0:5)), 
-                                                                              fire = paste0("fi", c(0:5)), 
-                                                                              other = paste0("ot", c(0:5)))){
-  
-  # Initialize output
-  out <- list()
-  
-  # Table indicating the number of individuals per species affected by each type of disturbance
-  out$species_disturbance_table <- data_model %>%
-    gather(key = "disturbance.type", value = "dist.present", "Dfire", "Dother", "Dstorm") %>%
-    filter(dist.present == 1) %>%
-    mutate(disturbance.type = gsub("D", "", disturbance.type)) %>%
-    group_by(disturbance.type, species, plotcode) %>%
-    summarize(n.indiv.per.plot = n()) %>%
-    group_by(disturbance.type, species) %>%
-    summarize(n.indiv = sum(n.indiv.per.plot), 
-              n.plot = n()) 
-  
-  # Parameters per species per disturbance
-  param.per.sp.per.dist <- expand.grid(disturbance = c("storm", "fire", "other"), 
-                                       Parameter = as.character(unlist(param.per.disturbance)), 
-                                       species = unique(data_model$species)) %>%
-    mutate(value = case_when(disturbance == "storm" & Parameter %in% param.per.disturbance$storm ~ 1, 
-                             disturbance == "other" & Parameter %in% param.per.disturbance$other ~ 1, 
-                             disturbance == "fire" & Parameter %in% param.per.disturbance$fire ~ 1, 
-                             TRUE ~ 0)) %>%
-    spread(key = "Parameter", value = "value") %>%
-    mutate(ID.spdist = paste(disturbance, species, sep = ".")) %>%
-    dplyr::select("ID.spdist", as.character(unlist(param.per.disturbance)))
-  
-  
-  
-  
-  # Vector of species - parameter combination to keep
-  out$species_parameter_to_keep <- (out$species_disturbance_table %>%
-                                      filter(n.indiv > 150 & n.plot > 15) %>%
-                                      mutate(ID.spdist = paste(disturbance.type, species, sep = ".")) %>%
-                                      left_join(param.per.sp.per.dist, by = "ID.spdist") %>%
-                                      gather(key = "Parameter", value = "value", as.character(unlist(param.per.disturbance))) %>%
-                                      filter(value == 1) %>%
-                                      mutate(ID = paste(species, Parameter, sep = ".")))$ID
+  for(i in 1:length(disturbances.in)){
+    # Store dataframe for disturbance i in object data.i 
+    eval(parse(text = paste0("data.i <- data_model$", disturbances.in[i])))
+    # Scale the dataset
+    data.i_scaled <- scale_data_model(data.i)
+    # Replace plotcode by a number
+    plotcode.table.i <- data.frame(plotcode = unique(data.i_scaled$plotcode), 
+                                   plot = c(1:length(unique(data.i_scaled$plotcode))))
+    # Replace species by a number 
+    species.table.i <- data.frame(species = unique(data.i_scaled$species), 
+                                  sp = c(1:length(unique(data.i_scaled$species))))
+    # Replace country by a number
+    country.table.i <- data.frame(country = unique(data.i_scaled$country), 
+                                  co = c(1:length(unique(data.i_scaled$country))))
+    # Format final data
+    data.out.i <- data.i_scaled %>%
+      # Determine if tree is dead or not
+      mutate(d = ifelse(a == 1, 0, 1)) %>%
+      # Add plot code
+      left_join(plotcode.table.i, by = "plotcode") %>%
+      # Add species code
+      left_join(species.table.i, by = "species") %>%
+      # Add country code
+      left_join(country.table.i, by = "country")
+    
+    # Create the data list
+    data_jags.i <- list(
+      Ntrees = NROW(data.out.i),
+      Nplot = NROW(plotcode.table.i), 
+      Nspecies = NROW(species.table.i),
+      Ncountry = NROW(country.table.i),
+      plot = data.out.i$plot, 
+      sp = data.out.i$sp,
+      co = data.out.i$co,
+      d = data.out.i$d,
+      time = data.out.i$time,
+      dbh = data.out.i$dbh,
+      logratio = data.out.i$log_dbh_dqm)
+    # Final list for disturbance i
+    out.i <- list(data_jags = data_jags.i, 
+                  plotcode.table = plotcode.table.i, 
+                  species.table = species.table.i, 
+                  country.table = country.table.i)
+    # Add list i to the global list
+    eval(parse(text = paste0("out$", disturbances.in[i], " <- out.i")))
+    
+  }
   
   return(out)
 }
@@ -893,69 +254,267 @@ get_disturbance_species_info_climate <- function(data_model,
 
 
 
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+## Extract model outputs   ------------
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-#' Get disturbance sensitivity based on the model with dominance
+
+
+
+#' Extract intensity for each iteration in each plot
+#' @param jags.model.in a rjags object
+#' @param data_jags.in input for jags.model.in
+extract_intensity_per_plotcode <- function(jags.model.in, data_jags.in){
+  
+  ggs(as.mcmc(jags.model.in)) %>%
+    # Remove deviance from parameters
+    filter(Parameter != "deviance") %>%
+    # Separate species code from parameter, and add disturbance
+    mutate(Parameter.true = gsub("\\[.+\\]", "", Parameter)) %>%
+    # Only keep intensity
+    filter(Parameter.true == "I") %>%
+    mutate(plot = as.integer(gsub("\\]", "", gsub(".+\\[", "", Parameter)))) %>%
+    # Add species name
+    left_join(data_jags.in$plotcode.table, by = "plot") %>%
+    # Merge iteration and chain
+    mutate(i = paste0("chain", Chain, "_iter", Iteration)) %>%
+    # Finish formatting
+    dplyr::select(plotcode, i, value) %>%
+    spread(key = "i", value = "value")
+  
+}
+
+#' Extract parameter per species for each iteration
+#' @param jags.model.in a rjags object
+#' @param data_jags.in input for jags.model.in
+extract_param_per_species <- function(jags.model.in, data_jags.in){
+  
+  out <- ggs(as.mcmc(jags.model.in)) %>%
+    # Remove deviance from parameters
+    filter(Parameter != "deviance") %>%
+    # Separate species code from parameter, and add disturbance
+    mutate(Parameter.true = gsub("\\[.+\\]", "", Parameter), 
+           sp_country = gsub("\\]", "", gsub(".+\\[", "", Parameter)), 
+           sp = as.integer(gsub("\\,.+", "", sp_country)), 
+           co = ifelse(sp == sp_country, NA_integer_, as.integer(gsub(".+\\,", "", sp_country)))) %>%
+    # Add country information
+    left_join(data_jags.in$country.table, by = "co") %>%
+    group_by(sp, Parameter.true, Chain, Iteration, country) %>%
+    summarise(value = mean(value)) %>%
+    ungroup() %>%
+    # Merge iteration and chain
+    mutate(iter = paste0("chain", Chain, "_iter", Iteration)) %>%
+    # Remove intensity
+    filter(Parameter.true != "I") %>%
+    # Add species name
+    left_join(data_jags.in$species.table, by = "sp") %>%
+    # Finish formatting
+    dplyr::select(species, iter, parameter = Parameter.true, value, country)
+  
+  # Fill the blanks for parameters that are not country specific
+  out <- rbind.data.frame(
+    subset(out, !is.na(country)), 
+    merge(out %>% filter(is.na(country)) %>% dplyr::select(-country), 
+          data.frame(country = data_jags.in$country.table$country))) %>%
+    spread(key = "parameter", value = "value")
+  
+  return(out)
+  
+}
+
+
+
+
+#' Predict tree-level death probability by averaging probability per iteration
 #' @param jags.model rjags object
 #' @param data_jags input used for the jags model
 #' @param data_model Tree data formatted for the IPM. 
-#' @param data_model_scaled Tree data formatted for the IPM and scaled 
-get_disturbance_sensivity_dqm <- function(jags.model, data_jags, data_model_scaled, data_model, 
-                                          disturbance_species_info){
+#' @param dir.in Directory where to save the plots
+predict_jags_meanProba <- function(jags.model, data_jags, data_model){
   
-  # Identify parameters per species
-  param_per_species <- ggs(as.mcmc(jags.model)) %>%
-    filter(Parameter != "deviance") %>%
-    mutate(sp = as.integer(gsub("\\]", "", gsub(".+\\[", "", Parameter))), 
-           Parameter = gsub("\\[.+\\]", "", Parameter)) %>%
-    left_join(data_jags$species_table, by = "sp") %>% 
-    group_by(species, Parameter) %>%
-    dplyr::summarize(mean = mean(value)) %>%
-    spread(key = "Parameter", value = "mean")
+  # Initialize output
+  out <- list()
   
-  # Model to scale dbh
-  scale_dbh <- lm(dbh.scaled ~ dbh, 
-                  data = data.frame(dbh = data_model$dbh, 
-                                    dbh.scaled = data_model_scaled$dbh))
+  # Identify disturbances 
+  disturbances.in <- names(jags.model)
   
-  # Disturbance - species combination to keep 
-  disturbance.species.to.keep <- (disturbance_species_info$species_disturbance_table %>%
-                                    mutate(ID = paste(species, disturbance.type, sep = ".")) %>%
-                                    filter(n.indiv >= 50 & n.plot >= 5))$ID
+  # Loop on all disturbances to extract data
+  for(i in 1:length(disturbances.in)){
+    
+    # Format data 
+    data.i <- data_model[[i]] %>%
+      mutate(disturbance = disturbances.in[i],
+             dbh.scaled = data_jags[[i]]$data_jags$dbh, 
+             logratio.scaled = data_jags[[i]]$data_jags$logratio, 
+             dead = ifelse(a == 1, 0, 1)) %>%
+      dplyr::select(treecode, plotcode, country, species, dbh, logratio = log_dbh_dqm, 
+                    disturbance, dbh.scaled, logratio.scaled, time, dead) %>%
+      # Add intensity per plotcode
+      left_join(extract_intensity_per_plotcode(jags.model[[i]], data_jags[[i]]), 
+                by = "plotcode") %>%
+      gather(key = "iter", value = "I", colnames(.)[grep("chain", colnames(.))]) %>%
+      # Add parameter per species
+      left_join(extract_param_per_species(jags.model[[i]], data_jags[[i]]), 
+                by = c("species", "iter", "country")) %>%
+      # Add missing parameter
+      mutate(a1 = ifelse(disturbance == "storm", a1, NA_real_)) %>%
+      # Calculate death probability depending on the model
+      mutate(pd = case_when(disturbance == "storm" ~ 1 - (1 - plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c))^time, 
+                            TRUE ~ 1 - (1 - plogis(a0 + b*I*dbh.scaled^c))^time)) %>%
+      # Average probabilities by treecode
+      group_by(treecode) %>%
+      summarise(p = mean(pd), 
+                p_05 = as.numeric(quantile(pd, probs = 0.05)), 
+                p_95 = as.numeric(quantile(pd, probs = 0.95)))
+    
+    # Add to the output list
+    eval(parse(text = paste0("out$", disturbances.in[i], " <- data.i")))
+  }
   
-  # dbh range per species
-  dbh.range.per.sp <- data_model %>%
-    group_by(species) %>%
-    dplyr::summarize(dbh.min = min(dbh, na.rm = TRUE), 
-                     dbh.max = max(dbh, na.rm = TRUE))
-  
-  # - Pre-format the data before plotting
-  out <- expand.grid(species = unique(param_per_species$species), 
-                     dbh = c(100, 250, 700), 
-                     Intensity = 0.7) %>%
-    mutate(dbh.scaled = predict(scale_dbh, newdata = .)) %>%
-    # Remove dbh outside of dbh range per species
-    left_join(dbh.range.per.sp, by = "species") %>%
-    filter(dbh >= dbh.min & dbh <= dbh.max) %>%
-    dplyr::select(-dbh.min, -dbh.max) %>%
-    # Add parameters per species
-    left_join(param_per_species, by = "species") %>%
-    # Calculate death probabilities by species and by disturbance
-    mutate(storm = plogis(st3 + st4*Intensity*dbh.scaled^st5), 
-           other = plogis(ot3 + ot4*Intensity*dbh.scaled^ot5), 
-           fire = plogis(fi3 + fi4*Intensity*dbh.scaled^fi5)) %>%
-    dplyr::select(species, dbh, storm, other, fire) %>%
-    gather(key = "disturbance", value = "sensitivity", "storm", "other", "fire") %>%
-    # filter predictions for which we don't have enough data
-    mutate(ID = paste(species, disturbance, sep = ".")) %>%
-    filter(ID %in% disturbance.species.to.keep) %>%
-    mutate(trait.name = paste0(disturbance, ".dbh", dbh)) %>%
-    dplyr::select(species, trait.name, sensitivity) %>%
-    spread(key = trait.name, value = sensitivity)
-  
-  
-  # return the formatted dataset
+  # return the name of all the plots made
   return(out)
 }
+
+
+
+#' Predict tree-level death probability by averaging parameters per iteration
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param data_model Tree data formatted for the IPM. 
+#' @param dir.in Directory where to save the plots
+predict_jags_meanParam <- function(jags.model, data_jags, data_model){
+  
+  # Initialize output
+  out <- list()
+  
+  # Identify disturbances 
+  disturbances.in <- names(jags.model)
+  
+  # Loop on all disturbances to extract data
+  for(i in 1:length(disturbances.in)){
+    
+    # Format data 
+    data.i <- data_model[[i]] %>%
+      mutate(disturbance = disturbances.in[i],
+             dbh.scaled = data_jags[[i]]$data_jags$dbh, 
+             logratio.scaled = data_jags[[i]]$data_jags$logratio, 
+             dead = ifelse(a == 1, 0, 1)) %>%
+      dplyr::select(treecode, plotcode, country, species, dbh, logratio = log_dbh_dqm, 
+                    disturbance, dbh.scaled, logratio.scaled, time, dead) %>%
+      # Add intensity per plotcode
+      left_join(extract_intensity_per_plotcode(jags.model[[i]], data_jags[[i]]), 
+                by = "plotcode") %>%
+      gather(key = "iter", value = "I", colnames(.)[grep("chain", colnames(.))]) %>%
+      # Add parameter per species
+      left_join(extract_param_per_species(jags.model[[i]], data_jags[[i]]), 
+                by = c("species", "iter", "country")) %>%
+      # Add missing parameter
+      mutate(a1 = ifelse(disturbance == "storm", a1, NA_real_)) %>%
+      # Compute mean parameter and intensity
+      group_by(treecode, plotcode, disturbance, logratio.scaled, dbh.scaled, time) %>%
+      summarize(a0 = mean(a0), a1 = mean(a1), b = mean(b), c = mean(c), I = mean(I)) %>% 
+      ungroup() %>%
+      # Calculate death probability depending on the model
+      mutate(p = case_when(disturbance == "storm" ~ 1 - (1 - plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c))^time, 
+                            TRUE ~ 1 - (1 - plogis(a0 + b*I*dbh.scaled^c))^time)) %>%
+      dplyr::select(treecode, p)
+      
+    
+    # Add to the output list
+    eval(parse(text = paste0("out$", disturbances.in[i], " <- data.i")))
+  }
+  
+  # return the name of all the plots made
+  return(out)
+}
+
+
+#' Get the list of all species involved in the model
+#' @param data_model
+get_species_list <- function(data_model){
+  
+  # Initialize output
+  out <- c()
+  
+  # Extract species for each disturbance dataset
+  for(i in 1:length(names(data_model))) out <- c(out, data_model[[i]]$species)
+  
+  # Remove duplicates 
+  out <- unique(out)
+  
+  # return output
+  return(out)
+}
+
+#' Get disturbance sensitivity by species
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param data_model Tree data formatted for the IPM.
+#' @param dbh.ref dbh value for which to predict values
+#' @param logratio.ref value of the ratio dbh/dqm for which to predict values
+#' @param I.ref disturbance intensity for which to predict values
+get_disturbance_sensivity <- function(jags.model, data_jags, data_model, 
+                                      dbh.ref = 300, logratio.ref = 0, I.ref = 0.5){
+  
+  # Initialize output
+  out <- list()
+  
+  # Identify disturbances 
+  disturbances.in <- names(jags.model)
+  
+  # Loop on all disturbances to extract data
+  for(i in 1:length(disturbances.in)){
+    
+    # Model to scale logratio
+    scale_logratio <- lm(logratio.scaled ~ logratio, 
+                         data = data.frame(logratio = data_model[[i]]$log_dbh_dqm, 
+                                           logratio.scaled = data_jags[[i]]$data_jags$logratio))
+    # Model to scale dbh
+    scale_dbh <- lm(dbh.scaled ~ dbh, 
+                    data = data.frame(dbh = data_model[[i]]$dbh, 
+                                      dbh.scaled = data_jags[[i]]$data_jags$dbh))
+    
+    # Parameter per species
+    param_per_species.i <- extract_param_per_species(jags.model[[i]], data_jags[[i]])
+    if(disturbances.in[[i]] != "storm") param_per_species.i$a1 = NA_real_
+    param_per_species.i <- param_per_species.i %>%
+      group_by(species, iter) %>%
+      summarise(a0 = mean(a0), a1 = mean(a1), b = mean(b), c = mean(c))
+    
+    # Format data 
+    data.i <- expand.grid(species = data_jags[[i]]$species.table$species,
+                          dbh = dbh.ref, logratio = logratio.ref, I = I.ref, 
+                          iter = unique(param_per_species.i$iter), 
+                          disturbance = disturbances.in[i]) %>%
+      # Scale variables when needed
+      mutate(dbh.scaled = predict(scale_dbh, newdata = .), 
+             logratio.scaled = predict(scale_logratio, newdata = .)) %>%
+      # Add parameters per species
+      left_join(param_per_species.i, by = c("species", "iter")) %>%
+      # Compute probabilities
+      mutate(pd = case_when(disturbance == "storm" ~ plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c), 
+                            TRUE ~ plogis(a0 + b*I*dbh.scaled^c)), 
+             pd = 1 - (1 - pd)^5) %>%
+      # Average per species
+      group_by(species) %>%
+      summarise(p = mean(pd), 
+                p_025 = as.numeric(quantile(pd, probs = 0.025)), 
+                p_975 = as.numeric(quantile(pd, probs = 0.975)))
+    
+    # Add to the output list
+    eval(parse(text = paste0("out$", disturbances.in[i], " <- data.i")))
+  }
+  
+  # return the name of all the plots made
+  return(out)
+}
+
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+## Manage traits data      ------------
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 
 
 
@@ -1081,6 +640,189 @@ compile_traits_TRY <- function(TRY_file, species.in){
     spread(key = trait, value = trait.value)  
   
   return(traits.TRY)
+}
+
+
+
+
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+## Outdated functions ------------
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+#' Generate species-specific parameters to simulate data
+#' @param data.jags.in dataframe containing plot and tree variable centered and scaled
+#' @param param character vector containing the name of all the parameters to initialize
+generate_parameters_sp <- function(data.jags.in, param = paste0("c", c(0:8))){
+  out <- data.frame(sp = data.jags.in$species_table$sp)
+  for(i in 1:length(param)){
+    # intercept
+    if(param[i] %in% c("c0", "c3", "c6")){
+      out$value <- round(runif(dim(out)[1], -6, -4), digits = 3)
+    } 
+    # multiplicative parameter
+    if(param[i] %in% c("c1", "c4", "c7")){
+      out$value <- round(runif(dim(out)[1], 3, 6), digits = 3)
+    } 
+    # power parameter
+    if(param[i] %in% c("c2", "c5", "c8")){
+      out$value <- round(rnorm(dim(out)[1], mean = 0, sd = 0.5), digits = 1)
+    } 
+    
+    colnames(out)[i+1] <- param[i]
+  }
+  return(out)
+}
+
+
+
+
+
+#' Simulate tree status data for the jags model with disturbance given and specific background
+#' mortality equations (see supplementary of Kunstler et al. 2020 for original equations)
+#' @param data.jags.in dataframe containing plot and tree variable centered and scaled
+#' @param parameters_sp dataframe containing the parameters value per species
+#' @author Björn Reineking, Julien Barrere
+simulate_status_full_sub <- function(data.jags.in, parameters_sp){
+  
+  
+  
+  # species table extended with parameters value
+  species.table.extended <- data.jags.in$species_table %>%
+    left_join(parameters_sp, by = "sp")
+  
+  # plot table extended with disturbance intensity
+  plot.table.extended <- data.frame(plot = data.jags.in$data_jags$plot, 
+                                    d = data.jags.in$data_jags$d, 
+                                    Dfire = data.jags.in$data_jags$Dfire, 
+                                    Dstorm = data.jags.in$data_jags$Dstorm, 
+                                    Dother = data.jags.in$data_jags$Dother) %>%
+    group_by(plot, Dfire, Dstorm, Dother) %>%
+    summarise(severity = sum(d)/n()) %>%
+    ungroup() %>%
+    mutate(Intensity.fire = rbeta(dim(.)[1], 0.66, 0.36),
+           Intensity.fire = case_when(Intensity.fire < 0.001 ~ 0.001, 
+                                      Intensity.fire > 0.999 ~ 0.999, 
+                                      TRUE ~ Intensity.fire), 
+           Intensity.storm = rbeta(dim(.)[1], 0.65, 2.66),
+           Intensity.storm = case_when(Intensity.storm < 0.001 ~ 0.001, 
+                                       Intensity.storm > 0.999 ~ 0.999, 
+                                      TRUE ~ Intensity.storm), 
+           Intensity.other = rbeta(dim(.)[1], 0.48, 1.77),
+           Intensity.other = case_when(Intensity.other < 0.001 ~ 0.001, 
+                                       Intensity.other > 0.999 ~ 0.999, 
+                                      TRUE ~ Intensity.other), 
+           Ifire = Dfire*Intensity.fire, 
+           Istorm = Dstorm*Intensity.storm, 
+           Iother = Dother*Intensity.other) %>%
+    ungroup() %>%
+    dplyr::select(plot, Ifire, Istorm, Iother)
+  
+  # Calculate the state for each tree
+  newstatus.table <- data.frame(plot = data.jags.in$data_jags$plot, 
+                                sp = data.jags.in$data_jags$sp, 
+                                time = data.jags.in$data_jags$time, 
+                                dbh = data.jags.in$data_jags$dbh, 
+                                Dfire = data.jags.in$data_jags$Dfire, 
+                                Dstorm = data.jags.in$data_jags$Dstorm, 
+                                Dother = data.jags.in$data_jags$Dother) %>%
+    # Add species parameter
+    left_join(species.table.extended, by = "sp") %>%
+    # Add intensity
+    left_join(plot.table.extended, by = "plot") %>%
+    # calculate probabilities for the three different states
+    mutate(pdstorm = 1 - (1 - plogis(c0 + c1*Istorm*dbh^c2))^time, 
+           pdother = 1 - (1 - plogis(c3 + c4*Iother*dbh^c5))^time, 
+           pdfire = 1 - (1 - plogis(c6 + c7*Ifire*dbh^c8))^time, 
+           pdD = 1 - (1 - Dstorm*pdstorm)*(1 - Dother*pdother)*(1 - Dfire*pdfire), 
+           d = NA_integer_)
+  
+  # death probability
+  for(i in 1:dim(newstatus.table)[1]) newstatus.table$d[i] <- rbinom(1, 1, newstatus.table$pdD[i])
+  
+  # Final output
+  out <- data.jags.in
+  # Add disturbance intensity
+  out$data_jags$Istorm = newstatus.table$Istorm
+  out$data_jags$Iother = newstatus.table$Iother
+  out$data_jags$Ifire = newstatus.table$Ifire
+  # Add tree status
+  out$data_jags$d <- newstatus.table$d
+  
+  return(out)
+}
+
+
+
+
+
+
+
+
+#' Get disturbance sensitivity based on the model with dominance
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param data_model Tree data formatted for the IPM. 
+#' @param data_model_scaled Tree data formatted for the IPM and scaled 
+get_disturbance_sensivity_dqm <- function(jags.model, data_jags, data_model_scaled, data_model, 
+                                          disturbance_species_info){
+  
+  # Identify parameters per species
+  param_per_species <- ggs(as.mcmc(jags.model)) %>%
+    filter(Parameter != "deviance") %>%
+    mutate(sp = as.integer(gsub("\\]", "", gsub(".+\\[", "", Parameter))), 
+           Parameter = gsub("\\[.+\\]", "", Parameter)) %>%
+    left_join(data_jags$species_table, by = "sp") %>% 
+    group_by(species, Parameter) %>%
+    dplyr::summarize(mean = mean(value)) %>%
+    spread(key = "Parameter", value = "mean")
+  
+  # Model to scale dbh
+  scale_dbh <- lm(dbh.scaled ~ dbh, 
+                  data = data.frame(dbh = data_model$dbh, 
+                                    dbh.scaled = data_model_scaled$dbh))
+  
+  # Disturbance - species combination to keep 
+  disturbance.species.to.keep <- (disturbance_species_info$species_disturbance_table %>%
+                                    mutate(ID = paste(species, disturbance.type, sep = ".")) %>%
+                                    filter(n.indiv >= 50 & n.plot >= 5))$ID
+  
+  # dbh range per species
+  dbh.range.per.sp <- data_model %>%
+    group_by(species) %>%
+    dplyr::summarize(dbh.min = min(dbh, na.rm = TRUE), 
+                     dbh.max = max(dbh, na.rm = TRUE))
+  
+  # - Pre-format the data before plotting
+  out <- expand.grid(species = unique(param_per_species$species), 
+                     dbh = c(100, 250, 700), 
+                     Intensity = 0.7) %>%
+    mutate(dbh.scaled = predict(scale_dbh, newdata = .)) %>%
+    # Remove dbh outside of dbh range per species
+    left_join(dbh.range.per.sp, by = "species") %>%
+    filter(dbh >= dbh.min & dbh <= dbh.max) %>%
+    dplyr::select(-dbh.min, -dbh.max) %>%
+    # Add parameters per species
+    left_join(param_per_species, by = "species") %>%
+    # Calculate death probabilities by species and by disturbance
+    mutate(storm = plogis(st3 + st4*Intensity*dbh.scaled^st5), 
+           other = plogis(ot3 + ot4*Intensity*dbh.scaled^ot5), 
+           fire = plogis(fi3 + fi4*Intensity*dbh.scaled^fi5)) %>%
+    dplyr::select(species, dbh, storm, other, fire) %>%
+    gather(key = "disturbance", value = "sensitivity", "storm", "other", "fire") %>%
+    # filter predictions for which we don't have enough data
+    mutate(ID = paste(species, disturbance, sep = ".")) %>%
+    filter(ID %in% disturbance.species.to.keep) %>%
+    mutate(trait.name = paste0(disturbance, ".dbh", dbh)) %>%
+    dplyr::select(species, trait.name, sensitivity) %>%
+    spread(key = trait.name, value = sensitivity)
+  
+  
+  # return the formatted dataset
+  return(out)
 }
 
 

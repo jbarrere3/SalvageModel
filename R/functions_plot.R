@@ -174,6 +174,59 @@ plot_harvest_and_death_rate <- function(data_model, file.in){
 }
 
 
+#' Plot the relation between disturbance severity (observed) and intensity (estimated)
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param FUNDIV_plot Plot table formatted for FUNDIV
+#' @param file.in Path and file where to save the plot
+map_disturbance_intensity <- function(jags.model, data_jags, FUNDIV_plot, file.in){
+  
+  ## - Create directories if needed
+  create_dir_if_needed(file.in)
+  
+  ## - Identify disturbances 
+  disturbances.in <- names(jags.model)
+  
+  ## - Loop on all disturbances
+  for(i in 1:length(disturbances.in)){
+    data.i <- extract_intensity_per_plotcode(jags.model[[i]], data_jags[[i]]) %>%
+      gather(key = "iter", value = "I", colnames(.)[which(colnames(.) != "plotcode")]) %>%
+      group_by(plotcode) %>%
+      summarize(intensity = mean(I)) %>%
+      mutate(disturbance = disturbances.in[i]) %>%
+      left_join(FUNDIV_plot, by = "plotcode") %>%
+      dplyr::select(plotcode, latitude, longitude, disturbance, intensity)
+    
+    if(i == 1) data <- data.i
+    else data <- rbind(data, data.i)
+  }
+  
+  # Convert into a spatial object
+  data <- data %>% st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant")
+  
+  ## - Make the plot
+  plot.out <- ne_countries(scale = "medium", returnclass = "sf") %>%
+    ggplot(aes(geometry = geometry)) +
+    geom_sf(fill = "black", color = "lightgray", show.legend = F) +
+    # Add storm disturbance
+    geom_sf(data = data, shape = 16, aes(color = intensity), 
+            show.legend = "point", size = 0.05) +
+    scale_color_gradient(low = "black", high = "white") +
+    facet_wrap(~ disturbance) +
+    coord_sf(xlim = c(-10, 32), ylim = c(36, 71)) + 
+    annotation_scale(location = "bl", width_hint = 0.13) +
+    theme(panel.background = element_rect(color = 'black', fill = 'white'), 
+          panel.grid = element_blank(), 
+          strip.background = element_rect(fill = "#343A40", color = "black"), 
+          strip.text = element_text(color = "white")) 
+  
+  ## - save the plot
+  ggsave(file.in, plot.out, width = 25, height = 12, units = "cm", dpi = 600)
+  return(file.in)
+  
+}
+
+
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## 3. Diagnostic plots ------------
@@ -677,6 +730,125 @@ plot_predicted_vs_observed <- function(jags.model, data_jags, data_model,
   ggsave(file.in, plot.out, width = 25, height = 20, units = "cm", dpi = 600)
   
   # return the name of all the plots made
+  return(file.in)
+}
+
+
+
+
+#' Get disturbance sensitivity by species
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param data_model Tree data formatted for the IPM.
+#' @param dbh.ref dbh value for which to predict values
+#' @param logratio.ref value of the ratio dbh/dqm for which to predict values
+#' @param I.ref disturbance intensity for which to predict values
+#' @param file.in Name and path of the plot to save
+plot_param_per_species <- function(jags.model, data_jags, data_model, 
+                                   dbh.ref = 300, logratio.ref = 0, I.ref = 0.5, 
+                                   file.in){
+  
+  # Initialize output
+  out <- list()
+  
+  # Identify disturbances 
+  disturbances.in <- names(jags.model)
+  
+  # Initialize number of species per disturbance
+  n.sp.per.dist <- c()
+  
+  # Loop on all disturbances to extract data
+  for(i in 1:length(disturbances.in)){
+    
+    # Identify the right color to use for the plot
+    if(disturbances.in[i] == "fire") color.i <- "#F77F00"
+    if(disturbances.in[i] == "other") color.i <- "#90A955"
+    if(disturbances.in[i] == "storm") color.i <- "#4361EE"
+    
+    
+    # Model to scale logratio
+    scale_logratio <- lm(logratio.scaled ~ logratio, 
+                         data = data.frame(logratio = data_model[[i]]$log_dbh_dqm, 
+                                           logratio.scaled = data_jags[[i]]$data_jags$logratio))
+    # Model to scale dbh
+    scale_dbh <- lm(dbh.scaled ~ dbh, 
+                    data = data.frame(dbh = data_model[[i]]$dbh, 
+                                      dbh.scaled = data_jags[[i]]$data_jags$dbh))
+    
+    # Parameter per species
+    param_per_species.i <- extract_param_per_species(jags.model[[i]], data_jags[[i]])
+    if(disturbances.in[[i]] != "storm") param_per_species.i$a1 = NA_real_
+    param_per_species.i <- param_per_species.i %>%
+      group_by(species, iter) %>%
+      summarise(a0 = mean(a0), a1 = mean(a1), b = mean(b), c = mean(c))
+    
+    # Format data 
+    data.i <- expand.grid(species = data_jags[[i]]$species.table$species,
+                          dbh = dbh.ref, logratio = logratio.ref, I = I.ref, 
+                          iter = unique(param_per_species.i$iter), 
+                          disturbance = disturbances.in[i]) %>%
+      # Scale variables when needed
+      mutate(dbh.scaled = predict(scale_dbh, newdata = .), 
+             logratio.scaled = predict(scale_logratio, newdata = .)) %>%
+      # Add parameters per species
+      left_join(param_per_species.i, by = c("species", "iter")) %>%
+      # Compute probabilities
+      mutate(pd = case_when(disturbance == "storm" ~ plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c), 
+                            TRUE ~ plogis(a0 + b*I*dbh.scaled^c)), 
+             pd = 1 - (1 - pd)^5) %>%
+      # Average per species
+      group_by(species) %>%
+      summarise(sensitivity_mean = mean(pd), 
+                sensitivity_ql = as.numeric(quantile(pd, probs = 0.025)), 
+                sensitivity_qh = as.numeric(quantile(pd, probs = 0.975)), 
+                dbh.effect_mean = mean(c), 
+                dbh.effect_ql = as.numeric(quantile(c, probs = 0.025)), 
+                dbh.effect_qh = as.numeric(quantile(c, probs = 0.975)), 
+                dominance.effect_mean = mean(a1, na.rm = TRUE), 
+                dominance.effect_ql = as.numeric(quantile(a1, probs = 0.025, na.rm = TRUE)), 
+                dominance.effect_qh = as.numeric(quantile(a1, probs = 0.975, na.rm = TRUE))) %>%
+      # Arrange species by sensitivity value
+      ungroup() %>%
+      filter(!(species %in% c("Other conifer", "Other broadleaf"))) %>%
+      mutate(species = factor(species, levels = .$species[order(.$sensitivity_mean)])) %>%
+      # Format for plotting
+      gather(key = "variable", value = "value", colnames(.)[which(colnames(.) != "species")]) %>%
+      separate(col = "variable", into = c("parameter", "value.type"), sep = "_") %>%
+      spread(key = "value.type", value = "value") %>%
+      mutate(parameter = gsub("\\.", "\\ ", parameter)) %>%
+      mutate(parameter = ifelse(parameter != "sensitivity", parameter, 
+                                paste0(disturbances.in[i], " sensitivity"))) %>%
+      mutate(parameter = factor(parameter, 
+                                levels = c(paste0(disturbances.in[i], " sensitivity"), 
+                                           "dbh effect", "dominance effect")))
+    
+    # Make the plot
+    plot.i <- data.i %>%
+      ggplot(aes(x = species, y = mean, ymin = ql, ymax = qh)) +
+      geom_errorbar(width = 0, color = color.i) +
+      geom_point(color = color.i) + 
+      coord_flip() + 
+      facet_wrap(~ parameter, scales = "free_x") + 
+      geom_hline(yintercept = 0, linetype = "dashed") + 
+      xlab("") + ylab("") +
+      theme(panel.background = element_rect(color = "black", fill = "white"), 
+            panel.grid = element_blank(), 
+            strip.background = element_blank())
+    
+    # Add to the output list
+    eval(parse(text = paste0("out$", disturbances.in[i], " <- plot.i")))
+    
+    # Add also the number of species
+    n.sp.per.dist <- c(n.sp.per.dist, length(unique(data.i$species)))
+  }
+  
+  
+  # Assemble all plots
+  plot.out <- plot_grid(plotlist = out, ncol = 1, align = "v", rel_heights = (n.sp.per.dist+10),
+                        labels = paste0("(", letters[c(1:length(disturbances.in))], ")"))
+  
+  ## - save the plot
+  ggsave(file.in, plot.out, width = 18, height = 25, units = "cm", dpi = 600)
   return(file.in)
 }
 

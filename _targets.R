@@ -111,6 +111,12 @@ list(
     jags.model, data_jags, "fig/real_data/reference/intensity_distribution.png"), 
     format = "file"),
   
+  # Plot parameter values
+  tar_target(fig_param_per_species, plot_param_per_species(
+    jags.model, data_jags, data_model, 
+    file.in = "fig/real_data/reference/param_per_species.png"), 
+    format = "file"),
+  
   
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -179,6 +185,10 @@ list(
   
   # Rate of dead and harvested trees
   tar_target(fig_harvest_death_rate, plot_harvest_and_death_rate(
-    data_model, "fig/eploratory/death_harvest_rates.png"), format = "file")
+    data_model, "fig/exploratory/death_harvest_rates.png"), format = "file"), 
+  
+  # Make a map of disturbance intensity
+  tar_target(fig_disturbance_intensity, map_disturbance_intensity(
+    jags.model, data_jags, FUNDIV_plot, "fig/real_data/reference/map_intensity.png"))
   
 )

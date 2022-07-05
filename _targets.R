@@ -21,11 +21,14 @@ library(targets)
 # Load functions
 lapply(grep("R$", list.files("R"), value = TRUE), function(x) source(file.path("R", x)))
 # install if needed and load packages
-packages.in <- c("dplyr", "ggplot2", "tidyr", "data.table", "sp", "R2jags", "sf",
-                 "ggmcmc", "taxize", "rnaturalearth", "ggspatial", "ggnewscale")
+packages.in <- c("dplyr", "ggplot2", "RCurl", "httr", "tidyr", "data.table", "sp", "R2jags", "rstan", "cowplot",
+                 "ggmcmc", "taxize", "rnaturalearth", "ggspatial", "sf", "ggnewscale", "readxl", "scales", 
+                 "FactoMineR", "ade4", "factoextra", "xtable", "MASS", "vegan")
 for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.packages()))) install.packages(packages.in[i])
 # Targets options
-options(tidyverse.quiet = TRUE, clustermq.scheduler = "multicore")
+options(tidyverse.quiet = TRUE, 
+        clustermq.scheduler = "multicore", 
+        dplyr.summarise.inform = FALSE)
 tar_option_set(packages = packages.in)
 set.seed(2)
 
@@ -47,8 +50,7 @@ list(
   tar_target(FUNDIV_tree_FI, fread(grep("FinnishNFI_tree", datafiles, value = TRUE))), 
   tar_target(FUNDIV_plot_FI, fread(grep("FinnishNFI_plot", datafiles, value = TRUE))), 
   tar_target(Climate_noFI, fread(grep("NFI_climate", datafiles, value = TRUE))), 
-  tar_target(Climate_FI, fread(grep("climate_FI", datafiles, value = TRUE))), 
-  tar_target(BM_equations, fread(grep("BM_equations", datafiles, value = TRUE))), 
+  tar_target(Climate_FI, fread(grep("climate_FI", datafiles, value = TRUE))),
   
   # Merge data from the different NFI
   tar_target(FUNDIV_tree, rbind(FUNDIV_tree_FR, FUNDIV_tree_SP, FUNDIV_tree_FI)),
@@ -65,92 +67,150 @@ list(
   # -- Step 2 - Prepare data for the model ----
   
   # Keep variables relevant to the model
-  tar_target(data_model, format_data_model(FUNDIV_tree_FR, FUNDIV_plot_FR, Climate, BM_equations)), 
-  tar_target(data_model_full, format_data_model_full(FUNDIV_tree, FUNDIV_plot, Climate, BM_equations, species)),
-  
-  # Scale numeric variables
-  tar_target(data_model_scaled, scale_data_model(data_model, var = c("dbh", "comp", "sgdd", "wai", "DS"))), 
-  tar_target(data_model_full_scaled, scale_data_model(data_model_full, var = c("dbh", "comp", "sgdd", "wai", "DS"))),
+  tar_target(data_model, format_data_model(FUNDIV_tree, FUNDIV_plot, Climate, species)), 
   
   # Prepare data as model input
-  tar_target(data_jags_full_sub, generate_data_jags_full_sub(data_model_full_scaled)),
+  tar_target(data_jags, generate_data_jags(data_model)), 
   
-  # Simulate some data
-  tar_target(parameters_sp, generate_parameters_sp(data_jags_full_sub)),
-  tar_target(data_jags_full_sub_simulated, simulate_status_full_sub(data_jags_full_sub, parameters_sp)),
   
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # -- Step 3 - Model fit and output ----
+  # -- Step 3 - Model fit ----
   
-  # Fit the jags model
-  # - With France and Spain
-  tar_target(jags.model_full_sub, fit_mortality_full_sub(
-    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 2000, n.burn = 500, n.thin = 1, param.in = paste0("c", c(0:8)))), 
-  tar_target(jags.model_full_sub_I, fit_mortality_full_sub(
-    data_jags_full_sub$data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 10, param.in = c("Istorm", "Ifire", "Iother"))), 
-  # - With France and Spain and simulated data
-  tar_target(jags.model_full_sub_simulated, fit_mortality_full_sub_simulated(
-    data_jags_full_sub_simulated$data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 1)), 
+  # Fit the reference model
+  tar_target(jags.model, fit_mortality(data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 10)), 
+  
   
   
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # -- Step 4 - Plot model outputs ----
   
-  # Extract information on how disturbances affect each species (so that parameters that can't be estimated are not shown)
-  tar_target(disturbance_species_info, get_disturbance_species_info(data_model_full)),
-  
   # Plot convergence 
-  tar_target(fig_convergence_full_sub, plot_convergence(jags.model_full_sub, data_jags_full_sub, BM_equations, 
-                                                        disturbance_species_info, "fig/real_data/multispecies_submodel_full/convergence"), 
+  tar_target(fig_convergence, plot_convergence(jags.model, data_jags, "fig/real_data/reference/convergence"), 
              format = "file"),
-  tar_target(fig_convergence_full_sub_simulated, plot_convergence(jags.model_full_sub_simulated, data_jags_full_sub_simulated, BM_equations, 
-                                                                  disturbance_species_info, "fig/simulated_data/multispecies_submodel_full/convergence"), 
-             format = "file"),
-  
-  # Plot parameters per species for real data
-  tar_target(fig_param_per_species_full, plot_parameters_per_species_full(jags.model_full_sub, data_jags_full_sub, disturbance_species_info, 
-                                                                          "fig/real_data/multispecies_submodel_full/parameters_per_sp.png"), 
-             format = "file"),
-  
-  # Plot true vs estimated parameters for simulated data
-  tar_target(fig_param_true_vs_estimated, plot_parameters_true_vs_estimated(
-    jags.model_full_sub_simulated, data_jags_full_sub_simulated, parameters_sp, 
-    disturbance_species_info, "fig/simulated_data/multispecies_submodel_full/true_vs_estimated.png"), 
-    format = "file"),
-  tar_target(fig_param_true_vs_estimated2, plot_parameters_true_vs_estimated2(
-    jags.model_full_sub_simulated, data_jags_full_sub_simulated, parameters_sp, 
-    disturbance_species_info, "fig/simulated_data/multispecies_submodel_full/true_vs_estimated2.png"), 
-    format = "file"),
   
   # Plot the predictions of the model
-  tar_target(fig_prediction_full, plot_prediction_full(jags.model_full_sub, data_jags_full_sub, data_model_full_scaled, data_model_full,
-                                                       disturbance_species_info, "fig/real_data/multispecies_submodel_full/predictions"), 
-             format = "file"),
-  
-  # Estimated intensity vs severity
-  tar_target(fig_intensity_vs_severity, plot_intensity_vs_severity(
-    jags.model_full_sub_I, data_jags_full_sub, "fig/real_data/multispecies_submodel_full/intensity_vs_severity.png"), 
+  tar_target(fig_prediction_all, plot_prediction_all(
+    jags.model, data_jags, data_model, "fig/real_data/reference/prediction/all.png"), 
     format = "file"),
-  #tar_target(fig_map_intensity_and_severity, map_intensity_and_severity(
-   # jags.model_full_sub_I, data_jags_full_sub, FUNDIV_plot, 
-   # "fig/real_data/multispecies_submodel_full/map_intensity_and_severity.png"), 
-   # format = "file"),
+  tar_target(fig_prediction_all2, plot_prediction2(
+    jags.model, data_jags, data_model, "fig/real_data/reference/prediction/all2.png"), 
+    format = "file"),
+  tar_target(fig_prediction, plot_prediction(
+    jags.model, data_jags, data_model, "fig/real_data/reference/prediction"), 
+    format = "file"),
+  
+  
+  # Observation vs prediction
+  tar_target(fig_predict_vs_obs_meanProba, plot_predicted_vs_observed(
+    jags.model, data_jags, data_model, method = "mean.proba", "fig/real_data/reference/validation/meanProba.png"), 
+    format = "file"),
+  tar_target(fig_predict_vs_obs_meanParam, plot_predicted_vs_observed(
+    jags.model, data_jags, data_model, method = "mean.param", "fig/real_data/reference/validation/meanParam.png"), 
+    format = "file"),
+  
+  # Distribution of disturbance intensity
+  tar_target(fig_intensity_distribution, plot_intensity_distribution(
+    jags.model, data_jags, "fig/real_data/reference/intensity_distribution.png"), 
+    format = "file"),
+  
+  # Plot parameter values
+  tar_target(fig_param_per_species, plot_param_per_species(
+    jags.model, data_jags, data_model, 
+    file.in = "fig/real_data/reference/param_per_species.png"), 
+    format = "file"),
+  
+  
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  # -- Step 5 - Exploratory plots ----
+  # -- Step 5 - Traits analysis ----
   
-  tar_target(fig_disturbed_trees_per_species, 
-             plot_disturbed_trees_per_species(data_model_full, "fig/exploratory/disturbed_trees_per_species.png"), 
-             format = "file"), 
-  tar_target(fig_sgdd_species_disturbance, plot_climate_per_species_per_disturbance(
-    data_model_full, "sgdd", "fig/exploratory/sgdd_species_disturbance.png"), 
+  ## - data files
+  tar_target(wood.density_file, "data/traits/GlobalWoodDensityDatabase.xls", format = "file"),
+  tar_target(shade.tolerance_file, "data/traits/shade_tolerance_FrenchNFI.csv", format = "file"),
+  tar_target(root.depth_file, "data/traits/GRooTAggregateSpeciesVersion.csv", format = "file"),
+  tar_target(bark.thickness_file, "data/traits/bark_thickness_NFI.csv", format = "file"),
+  tar_target(TRY_file, "data/traits/TRY_data_request_21092.txt", format = "file"),
+  tar_target(gbif_file, "data/traits/sp_gbif_climate.csv", format = "file"),
+  
+  ## - Compile traits data
+  tar_target(traits_TRY, compile_traits_TRY(TRY_file, get_species_list(data_model))),
+  tar_target(traits, compile_traits(wood.density_file, shade.tolerance_file, root.depth_file, 
+                                    FUNDIV_tree, bark.thickness_file, get_species_list(data_model))), 
+  
+  
+  ##  Make trait by trait regressions
+  # -- Storm
+  tar_target(fig_trait_by_trait_storm, plot_traits_vs_sensitivity(
+    traits = traits, 
+    disturbance_sensitivity = get_disturbance_sensivity(jags.model, data_jags, data_model, 
+                                                        dbh.ref = 250, I.ref = 0.6), "storm",
+    dir.in = "fig/real_data/reference/traits/trait_by_trait_storm"), 
     format = "file"), 
-  tar_target(fig_wai_species_disturbance, plot_climate_per_species_per_disturbance(
-    data_model_full, "wai", "fig/exploratory/wai_species_disturbance.png"), 
-    format = "file")
+  tar_target(fig_trait_TRY_storm, plot_traits_vs_sensitivity(
+    traits = traits_TRY, 
+    disturbance_sensitivity = get_disturbance_sensivity(jags.model, data_jags, data_model, 
+                                                        dbh.ref = 250, I.ref = 0.6), "storm",
+    dir.in = "fig/real_data/reference/traits/TRY/storm"), 
+    format = "file"), 
+  # -- Fire
+  tar_target(fig_trait_by_trait_fire, plot_traits_vs_sensitivity(
+    traits = traits, 
+    disturbance_sensitivity = get_disturbance_sensivity(jags.model, data_jags, data_model, 
+                                                        dbh.ref = 250, I.ref = 0.6), "fire",
+    dir.in = "fig/real_data/reference/traits/trait_by_trait_fire"), 
+    format = "file"), 
+  tar_target(fig_trait_TRY_fire, plot_traits_vs_sensitivity(
+    traits = traits_TRY, 
+    disturbance_sensitivity = get_disturbance_sensivity(jags.model, data_jags, data_model, 
+                                                        dbh.ref = 250, I.ref = 0.6), "fire",
+    dir.in = "fig/real_data/reference/traits/TRY/fire"), 
+    format = "file"), 
+  # -- Other
+  tar_target(fig_trait_by_trait_other, plot_traits_vs_sensitivity(
+    traits = traits, 
+    disturbance_sensitivity = get_disturbance_sensivity(jags.model, data_jags, data_model, 
+                                                        dbh.ref = 250, I.ref = 0.6), "other", 
+    dir.in = "fig/real_data/reference/traits/trait_by_trait_other"), 
+    format = "file"), 
+  tar_target(fig_trait_TRY_other, plot_traits_vs_sensitivity(
+    traits = traits_TRY, 
+    disturbance_sensitivity = get_disturbance_sensivity(jags.model, data_jags, data_model, 
+                                                        dbh.ref = 250, I.ref = 0.6), "other",
+    dir.in = "fig/real_data/reference/traits/TRY/other"), 
+    format = "file"), 
+  
+  ##  Climate vs sensitivity regressions
+  # -- Storm
+  tar_target(fig_rda_gbif_storm, plot_rda_traits_vs_sensitivity(
+    traits = fread(gbif_file) %>% dplyr::select(species, mean_mat, mean_tmin, mean_map), 
+    disturbance_sensitivity = get_disturbance_sensivity(jags.model, data_jags, data_model, dbh.ref = 250, I.ref = 0.6)$storm, 
+    file.in = "fig/real_data/reference/gbif/rda_storm.jpg"), 
+    format = "file"),
+  # -- Other
+  tar_target(fig_rda_gbif_other, plot_rda_traits_vs_sensitivity(
+    traits = fread(gbif_file) %>% dplyr::select(species, mean_mat, mean_tmin, mean_map), 
+    disturbance_sensitivity = get_disturbance_sensivity(jags.model, data_jags, data_model, dbh.ref = 250, I.ref = 0.6)$other, 
+    file.in = "fig/real_data/reference/gbif/rda_other.jpg"), 
+    format = "file"), 
+  # -- Fire
+  tar_target(fig_rda_gbif_fire, plot_rda_traits_vs_sensitivity(
+    traits = fread(gbif_file) %>% dplyr::select(species, mean_mat, mean_tmin, mean_map), 
+    disturbance_sensitivity = get_disturbance_sensivity(jags.model, data_jags, data_model, dbh.ref = 250, I.ref = 0.6)$fire, 
+    file.in = "fig/real_data/reference/gbif/rda_fire.jpg"), 
+    format = "file"), 
   
   
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # -- Step 6 - Exploratory plots ----
+  
+  # Rate of dead and harvested trees
+  tar_target(fig_harvest_death_rate, plot_harvest_and_death_rate(
+    data_model, "fig/exploratory/death_harvest_rates.png"), format = "file"), 
+  
+  # Make a map of disturbance intensity
+  tar_target(fig_disturbance_intensity, map_disturbance_intensity(
+    jags.model, data_jags, FUNDIV_plot, "fig/real_data/reference/map_intensity.png"))
   
 )

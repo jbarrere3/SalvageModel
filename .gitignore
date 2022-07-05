@@ -5,3 +5,5 @@ data/FrenchNFI
 _targets
 .Rhistory
 fig
+data
+output

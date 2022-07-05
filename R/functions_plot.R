@@ -173,7 +173,6 @@ plot_harvest_and_death_rate <- function(data_model, file.in){
   
 }
 
-
 #' Plot the relation between disturbance severity (observed) and intensity (estimated)
 #' @param jags.model rjags object
 #' @param data_jags input used for the jags model
@@ -187,41 +186,66 @@ map_disturbance_intensity <- function(jags.model, data_jags, FUNDIV_plot, file.i
   ## - Identify disturbances 
   disturbances.in <- names(jags.model)
   
+  # Initialize output
+  data.plot <- list()
+  
   ## - Loop on all disturbances
   for(i in 1:length(disturbances.in)){
+    # Create spatial object with data for diturbance i
     data.i <- extract_intensity_per_plotcode(jags.model[[i]], data_jags[[i]]) %>%
       gather(key = "iter", value = "I", colnames(.)[which(colnames(.) != "plotcode")]) %>%
       group_by(plotcode) %>%
       summarize(intensity = mean(I)) %>%
       mutate(disturbance = disturbances.in[i]) %>%
       left_join(FUNDIV_plot, by = "plotcode") %>%
-      dplyr::select(plotcode, latitude, longitude, disturbance, intensity)
+      dplyr::select("plotcode", "latitude", "longitude", 
+                    "disturbance", "intensity") %>% 
+      spread(key = "disturbance", value = "intensity") %>%
+      st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant")
     
-    if(i == 1) data <- data.i
-    else data <- rbind(data, data.i)
+    # Add to the output list
+    eval(parse(text = paste0("data.plot$", disturbances.in[i], " <- data.i")))
   }
   
-  # Convert into a spatial object
-  data <- data %>% st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant")
-  
-  ## - Make the plot
+  ## - First plot for the countries only
   plot.out <- ne_countries(scale = "medium", returnclass = "sf") %>%
     ggplot(aes(geometry = geometry)) +
-    geom_sf(fill = "black", color = "lightgray", show.legend = F) +
+    geom_sf(fill = "#343A40", color = "lightgray", show.legend = F) + 
+    annotation_scale(location = "br", width_hint = 0.2) +
+    geom_rect(aes(xmin = -9.7, xmax = 9.7, ymin = 36, ymax = 51.5), 
+              color = "#BA181B", fill = NA) +
+    geom_rect(aes(xmin = 20, xmax = 31.5, ymin = 59.5, ymax = 70.5), 
+              color = "#BA181B", fill = NA)   + 
+    # Add other disturbance
+    geom_sf(data = data.plot$other, shape = 16, aes(color = other), 
+            show.legend = "point", size = 1) +
+    scale_color_gradient2(low = "white", mid = "#90A955", high = "black", midpoint = 0.3)  +
+    new_scale_colour() +
     # Add storm disturbance
-    geom_sf(data = data, shape = 16, aes(color = intensity), 
-            show.legend = "point", size = 0.05) +
-    scale_color_gradient(low = "black", high = "white") +
-    facet_wrap(~ disturbance) +
-    coord_sf(xlim = c(-10, 32), ylim = c(36, 71)) + 
-    annotation_scale(location = "bl", width_hint = 0.13) +
+    geom_sf(data = data.plot$storm, shape = 16, aes(color = storm), 
+            show.legend = "point", size = 1) +
+    scale_color_gradient2(low = "white", mid = "#4361EE", high = "black", midpoint = 0.3)  +
+    new_scale_colour() +
+    # Add fire disturbance
+    geom_sf(data = data.plot$fire, shape = 16, aes(color = fire), 
+            show.legend = "point", size = 1) +
+    scale_color_gradient2(low = "white", mid = "#F77F00", high = "black", midpoint = 0.3) +
+    # Finish formatting
+    coord_sf(xlim = c(-10, 32), ylim = c(36, 71)) +
     theme(panel.background = element_rect(color = 'black', fill = 'white'), 
-          panel.grid = element_blank(), 
-          strip.background = element_rect(fill = "#343A40", color = "black"), 
-          strip.text = element_text(color = "white")) 
+          panel.grid = element_blank(),
+          axis.text = element_text(size = 20),
+          legend.text = element_text(size = 16),
+          legend.title = element_text(size = 18),
+          legend.box = "horizontal",
+          legend.background = element_blank(),
+          legend.box.background = element_rect(colour = "black"), 
+          legend.position = c(0.2, 0.9))
+  
+  
   
   ## - save the plot
-  ggsave(file.in, plot.out, width = 25, height = 12, units = "cm", dpi = 600)
+  ggsave(file.in, plot.out, width = 26, height = 33, units = "cm", dpi = 600)
   return(file.in)
   
 }
@@ -1110,83 +1134,6 @@ plot_gbif_vs_sensitivity <- function(gbif_file, disturbance_sensitivity, disturb
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## Outdated functions ------------
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-#' Plot the relation between disturbance severity (observed) and intensity (estimated)
-#' @param jags.model rjags object
-#' @param data_jags input used for the jags model
-#' @param FUNDIV_plot Plot table formatted for FUNDIV
-#' @param file.in Path and file where to save the plot
-map_intensity_and_severity <- function(jags.model, data_jags, FUNDIV_plot, file.in){
-  
-  ## - Create directories if needed
-  create_dir_if_needed(file.in)
-  
-  ## - make the plot
-  # Prepare the data for plotting
-  data.plot <- data.frame(plot = data_jags$data_jags$plot, 
-                          Ifire = data_jags$data_jags$Dfire, 
-                          Istorm = data_jags$data_jags$Dstorm, 
-                          Iother = data_jags$data_jags$Dother) %>%
-    distinct() %>%
-    gather(key = "variable", value = "value", "Ifire", "Istorm", "Iother") %>%
-    filter(value == 1) %>%
-    mutate(Parameter = paste0(variable, "[", plot, "]")) %>%
-    left_join((ggs(as.mcmc(jags.model)) %>%
-                 group_by(Parameter) %>%
-                 summarize(intensity = mean(value, na.rm = T))), 
-              by = "Parameter") %>%
-    left_join((data.frame(plot = data_jags$data_jags$plot, 
-                          dead = data_jags$data_jags$d) %>%
-                 group_by(plot) %>%
-                 summarize(severity = sum(dead)/n())), 
-              by = "plot") %>%
-    mutate(disturbance.type = gsub("I", "", variable)) %>%
-    left_join(data_jags$plotcode_table, by = "plot") %>%
-    left_join((FUNDIV_plot %>% dplyr::select(plotcode, longitude, latitude)), by = "plotcode") %>%
-    dplyr::select(plotcode, longitude, latitude, disturbance = disturbance.type, 
-                  intensity, severity) %>%
-    gather(key = "variable", value = "value", "intensity", "severity") %>%
-    st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant")
-  
-  # Make the plot
-  plot.out <- ne_countries(scale = "medium", returnclass = "sf") %>%
-    ggplot(aes(geometry = geometry)) +
-    geom_sf(fill = "#E9ECEF", show.legend = F) +
-    # Add storm disturbance
-    geom_sf(data = (data.plot %>% filter(disturbance == "storm")), 
-            shape = 16, aes(color = value), 
-            show.legend = "point", size = 1) +
-    scale_color_gradient(low = "#89C2D9", high = "#014F86", name = "storm") +
-    new_scale_colour() +
-    # Add other disturbance
-    geom_sf(data = (data.plot %>% filter(disturbance == "other")), 
-            shape = 16, aes(color = value), 
-            show.legend = "point", size = 1) +
-    scale_color_gradient(low = "#B7E4C7", high = "#1B4332", name = "other") +
-    new_scale_colour() +
-    # Add fire disturbance
-    geom_sf(data = (data.plot %>% filter(disturbance == "fire")), 
-            shape = 16, aes(color = value), 
-            show.legend = "point", size = 1) +
-    scale_color_gradient(low = "#FFBA08", high = "#D00000", name = "fire") +
-    new_scale_colour() +
-    coord_sf(xlim = c(-10, 10), ylim = c(36, 52)) + 
-    annotation_scale(location = "bl", width_hint = 0.13) +
-    facet_wrap(~ variable)  +
-    theme(panel.background = element_rect(color = 'black', fill = 'white'), 
-          panel.grid = element_blank(),
-          strip.background = element_blank(), 
-          strip.text = element_text(size = 12, face = "bold")) 
-  
-  
-  ## - save the plot
-  ggsave(file.in, plot.out, width = 25, height = 16, units = "cm", dpi = 600)
-  return(file.in)
-  
-}
-
-
 
 
 

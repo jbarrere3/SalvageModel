@@ -74,7 +74,7 @@ list(
   # -- Step 3 - Model fit ----
   
   # Fit the reference model
-  tar_target(jags.model, fit_mortality(data_jags, n.chains = 3, n.iter = 500, n.burn = 100, n.thin = 10)), 
+  tar_target(jags.model, fit_mortality(data_jags, n.chains = 3, n.iter = 5000, n.burn = 1000, n.thin = 20)), 
   
   
   
@@ -144,6 +144,12 @@ list(
                                                         dbh.ref = 250, I.ref = 0.6), "storm",
     dir.in = "fig/real_data/reference/traits/trait_by_trait_storm"), 
     format = "file"), 
+  tar_target(fig_trait_TRY_storm, plot_traits_vs_sensitivity(
+    traits = traits_TRY, 
+    disturbance_sensitivity = get_disturbance_sensivity(jags.model, data_jags, data_model, 
+                                                        dbh.ref = 250, I.ref = 0.6), "storm",
+    dir.in = "fig/real_data/reference/traits/TRY/storm"), 
+    format = "file"), 
   # -- Fire
   tar_target(fig_trait_by_trait_fire, plot_traits_vs_sensitivity(
     traits = traits, 
@@ -151,12 +157,24 @@ list(
                                                         dbh.ref = 250, I.ref = 0.6), "fire",
     dir.in = "fig/real_data/reference/traits/trait_by_trait_fire"), 
     format = "file"), 
+  tar_target(fig_trait_TRY_fire, plot_traits_vs_sensitivity(
+    traits = traits_TRY, 
+    disturbance_sensitivity = get_disturbance_sensivity(jags.model, data_jags, data_model, 
+                                                        dbh.ref = 250, I.ref = 0.6), "fire",
+    dir.in = "fig/real_data/reference/traits/TRY/fire"), 
+    format = "file"), 
   # -- Other
   tar_target(fig_trait_by_trait_other, plot_traits_vs_sensitivity(
     traits = traits, 
     disturbance_sensitivity = get_disturbance_sensivity(jags.model, data_jags, data_model, 
                                                         dbh.ref = 250, I.ref = 0.6), "other", 
     dir.in = "fig/real_data/reference/traits/trait_by_trait_other"), 
+    format = "file"), 
+  tar_target(fig_trait_TRY_other, plot_traits_vs_sensitivity(
+    traits = traits_TRY, 
+    disturbance_sensitivity = get_disturbance_sensivity(jags.model, data_jags, data_model, 
+                                                        dbh.ref = 250, I.ref = 0.6), "other",
+    dir.in = "fig/real_data/reference/traits/TRY/other"), 
     format = "file"), 
   
   ##  Climate vs sensitivity regressions

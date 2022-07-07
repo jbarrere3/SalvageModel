@@ -76,6 +76,40 @@ get_species_info <- function(FUNDIV_tree){
   
 }
 
+#' Get family and order for each species present in the dataset
+#' @param FUNDIV_tree Tree table with a column entitled "species"
+get_species_info2 <- function(FUNDIV_tree){
+  
+  # Extract genus and family of all species present
+  extraction.original <- cbind(data.frame(species.original = unique(FUNDIV_tree$species)), 
+                               TPL(splist = unique(FUNDIV_tree$species)))
+  
+  # Table linking family to order
+  data(vascular.families)
+  
+  # Format the output
+  out <- extraction.original %>%
+    dplyr::select(species = species.original, 
+                  genus = New.Genus) %>% 
+    left_join((extraction.original %>%
+                 dplyr::select(genus = New.Genus, family = Family) %>%
+                 filter(!is.na(family)) %>%
+                 filter(family != "") %>%
+                 distinct()), 
+              by = "genus") %>%
+    left_join((vascular.families %>%
+                 dplyr::select(family = Family, group = Group)), 
+              by = "family") %>%
+    filter(!is.na(genus)) %>%
+    mutate(group = ifelse(is.na(group), group, paste(toupper(substr(group, 1, 1)), 
+                                                     substr(group, 2, nchar(group)), sep="")))
+  
+  # return output
+  return(out)
+  
+}
+
+
 
 #' Format the data before fitting the reference mortality model
 #' @param FUNDIV_tree FUNDIV tree table

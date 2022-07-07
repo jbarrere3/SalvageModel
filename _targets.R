@@ -23,7 +23,7 @@ lapply(grep("R$", list.files("R"), value = TRUE), function(x) source(file.path("
 # install if needed and load packages
 packages.in <- c("dplyr", "ggplot2", "RCurl", "httr", "tidyr", "data.table", "sp", "R2jags", "rstan", "cowplot",
                  "ggmcmc", "taxize", "rnaturalearth", "ggspatial", "sf", "ggnewscale", "readxl", "scales", 
-                 "FactoMineR", "ade4", "factoextra", "xtable", "MASS", "vegan")
+                 "FactoMineR", "ade4", "factoextra", "xtable", "MASS", "vegan", "Taxonstand", "WorldFlora")
 for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.packages()))) install.packages(packages.in[i])
 # Targets options
 options(tidyverse.quiet = TRUE, 
@@ -58,7 +58,7 @@ list(
   tar_target(Climate, rbind(Climate_FI, Climate_noFI)),
   
   # Extract species information (genus, family, order)
-  tar_target(species, get_species_info(FUNDIV_tree)),
+  tar_target(species, get_species_info2(FUNDIV_tree)),
   
   
   

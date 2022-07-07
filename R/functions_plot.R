@@ -47,84 +47,6 @@ create_dir_if_needed <- function(file.in){
 
 
 
-#' Plot harvest probability depending on dbh, disturbance and land property
-#' @param data_model tree level dataset with the variables necessary for the model
-#' @param file.in Path and file where to save the plot
-plot_disturbed_trees_per_species <- function(data_model, file.in){
-  
-  ## - Create directories if needed
-  create_dir_if_needed(file.in)
-  
-  ## - make the plot
-  plot.out <- data_model %>%
-    mutate(Dnone = ifelse(D == 0, 1, 0)) %>%
-    gather(key = "disturbance.type", value = "dist.present", "Dfire", "Dother", "Dstorm", "Dnone") %>%
-    filter(dist.present == 1) %>%
-    mutate(disturbance.type = gsub("D", "", disturbance.type)) %>%
-    group_by(disturbance.type, species) %>%
-    summarize(n = n()) %>%
-    ggplot(aes(x = species, y = n)) + 
-    geom_bar(stat = "identity", colour = "black") + 
-    facet_wrap(~ disturbance.type, scales = "free_x") + 
-    coord_flip() + 
-    theme_bw() + 
-    ylab("Number of trees impacted")
-  
-  
-  ## - save the plot
-  ggsave(file.in, plot.out, width = 18, height = 16, units = "cm", dpi = 600)
-  return(file.in)
-  
-}
-
-
-
-#' Plot climatic range of each species per disturbance type
-#' @param data_model tree level dataset with the variables necessary for the model
-#' @param var.in climatic variable to plot (either sgdd or wai)
-#' @param file.in Path and file where to save the plot
-plot_climate_per_species_per_disturbance <- function(data_model, var.in, file.in){
-  
-  ## - Create directories if needed
-  create_dir_if_needed(file.in)
-  
-  ## - make the plot
-  data.plot <- data_model %>%
-    filter(D == 1) %>%
-    dplyr::select("species", var.in, "Dfire", "Dstorm", "Dother") %>%
-    gather(key = "disturbance", value = "present", "Dfire", "Dstorm", "Dother") %>%
-    filter(present == 1) %>%
-    mutate(disturbance = gsub("D", "", disturbance)) %>%
-    rename("climate" = var.in) %>%
-    group_by(species, disturbance) %>%
-    summarize(min = min(climate), 
-              mean = mean(climate), 
-              max = max(climate), 
-              label = paste0("(", n(), ")")) 
-  plot.out <- data.plot %>%
-    ggplot(aes(x = species, y = mean, ymin = min, ymax = max)) + 
-    geom_errorbar(width = 0) +
-    geom_point() + 
-    geom_text(aes(y = (max + max(data.plot$max)*0.15), label = label), 
-              inherit.aes = TRUE, size = 3) +
-    facet_wrap(~ disturbance, scales = "free_x") + 
-    coord_flip() + 
-    theme(panel.background = element_rect(color = "black", fill = "white"), 
-          strip.background = element_blank(), 
-          panel.grid = element_blank(), 
-          strip.text = element_text(face = "bold")) + 
-    ylab(paste0(var.in, " range")) + 
-    xlab("") + 
-    ylim(min(data.plot$min), max(data.plot$max)*1.3)
-  
-  
-  ## - save the plot
-  ggsave(file.in, plot.out, width = 20, height = 10, units = "cm", dpi = 600)
-  return(file.in)
-  
-}
-
-
 
 #' Plot the rate of dead and harvested trees
 #' @param data_model Data used to fit the model
@@ -403,6 +325,11 @@ plot_prediction_all <- function(jags.model, data_jags, data_model, file.in){
   # Identify disturbances 
   disturbances.in <- names(jags.model)
   
+  # Create a vector of colors for plotting
+  color.vector <- (data.frame(disturbance = c("biotic", "fire", "other", "snow", "storm"), 
+                              color = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")) %>%
+                     filter(disturbance %in% disturbances.in) %>%
+                     arrange(disturbance))$color
   
   # Loop on all disturbances to extract data for plotting
   for(i in 1:length(disturbances.in)){
@@ -472,7 +399,7 @@ plot_prediction_all <- function(jags.model, data_jags, data_model, file.in){
           panel.grid = element_blank(), 
           legend.key = element_blank(),
           legend.title = element_blank()) + 
-    scale_color_manual(values = c("#F77F00", "#90A955", "#4361EE")) +
+    scale_color_manual(values = color.vector) +
     ylab("Probability to die from a disturbance") + 
     xlab("dbh (mm)")
   
@@ -498,6 +425,11 @@ plot_prediction <- function(jags.model, data_jags, data_model, dir.in){
   # Identify disturbances 
   disturbances.in <- names(jags.model)
   
+  # Create a vector of colors for plotting
+  color.vector <- (data.frame(disturbance = c("biotic", "fire", "other", "snow", "storm"), 
+                              color = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")) %>%
+                     filter(disturbance %in% disturbances.in) %>%
+                     arrange(disturbance))$color
   
   # Loop on all disturbances to extract data for plotting
   for(i in 1:length(disturbances.in)){
@@ -569,7 +501,7 @@ plot_prediction <- function(jags.model, data_jags, data_model, dir.in){
             panel.grid = element_blank(), 
             legend.key = element_blank(),
             legend.title = element_blank()) + 
-      scale_color_manual(values = c("#ADB5BD", "#495057", "#212529")) +
+      scale_color_manual(values = color.vector) +
       ylab(paste0("Probability to die from ", disturbances.in[i], " disturbance")) + 
       xlab("dbh (mm)")
     
@@ -594,6 +526,11 @@ plot_prediction2 <- function(jags.model, data_jags, data_model, file.in){
   # Identify disturbances 
   disturbances.in <- names(jags.model)
   
+  # Create a vector of colors for plotting
+  color.vector <- (data.frame(disturbance = c("biotic", "fire", "other", "snow", "storm"), 
+                              color = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")) %>%
+                     filter(disturbance %in% disturbances.in) %>%
+                     arrange(disturbance))$color
   
   # Loop on all disturbances to extract data for plotting
   for(i in 1:length(disturbances.in)){
@@ -681,8 +618,8 @@ plot_prediction2 <- function(jags.model, data_jags, data_model, file.in){
           panel.grid = element_blank(), 
           legend.key = element_blank(),
           legend.title = element_blank()) + 
-    scale_color_manual(values = c("#F77F00", "#90A955", "#4361EE")) +
-    scale_fill_manual(values = c("#F77F00", "#90A955", "#4361EE")) +
+    scale_color_manual(values = color.vector) +
+    scale_fill_manual(values = color.vector) +
     ylab("Probability to die from a disturbance") + 
     xlab("dbh (mm)")
   
@@ -716,6 +653,12 @@ plot_predicted_vs_observed <- function(jags.model, data_jags, data_model,
   # Identify disturbances 
   disturbances.in <- names(jags.model)
   
+  # Create a vector of colors for plotting
+  color.vector <- (data.frame(disturbance = c("biotic", "fire", "other", "snow", "storm"), 
+                              color = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")) %>%
+                     filter(disturbance %in% disturbances.in) %>%
+                     arrange(disturbance))$color
+  
   # Loop on all disturbances to extract data
   for(i in 1:length(disturbances.in)){
     
@@ -743,7 +686,7 @@ plot_predicted_vs_observed <- function(jags.model, data_jags, data_model,
     geom_point(shape = 21, color = "black", alpha = 0.7) + 
     geom_abline(intercept = 0, slope = 1) +
     facet_wrap(~ species) +
-    scale_fill_manual(values = c("#F77F00", "#90A955", "#4361EE")) +
+    scale_fill_manual(values = color.vector) +
     xlab("Observed death rate") + ylab("Predicted death probability") + 
     theme(panel.background = element_rect(fill = "white", color = "black"), 
           strip.background = element_blank(), 
@@ -778,17 +721,17 @@ plot_param_per_species <- function(jags.model, data_jags, data_model,
   # Identify disturbances 
   disturbances.in <- names(jags.model)
   
+  # Create a vector of colors for plotting
+  color.vector <- (data.frame(disturbance = disturbances.in) %>%
+                     left_join(data.frame(disturbance = c("biotic", "fire", "other", "snow", "storm"), 
+                                          color = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")), 
+                               by = "disturbance"))$color
+  
   # Initialize number of species per disturbance
   n.sp.per.dist <- c()
   
   # Loop on all disturbances to extract data
   for(i in 1:length(disturbances.in)){
-    
-    # Identify the right color to use for the plot
-    if(disturbances.in[i] == "fire") color.i <- "#F77F00"
-    if(disturbances.in[i] == "other") color.i <- "#90A955"
-    if(disturbances.in[i] == "storm") color.i <- "#4361EE"
-    
     
     # Model to scale logratio
     scale_logratio <- lm(logratio.scaled ~ logratio, 
@@ -849,8 +792,8 @@ plot_param_per_species <- function(jags.model, data_jags, data_model,
     # Make the plot
     plot.i <- data.i %>%
       ggplot(aes(x = species, y = mean, ymin = ql, ymax = qh)) +
-      geom_errorbar(width = 0, color = color.i) +
-      geom_point(color = color.i) + 
+      geom_errorbar(width = 0, color = color.vector[i]) +
+      geom_point(color = color.vector[i]) + 
       coord_flip() + 
       facet_wrap(~ parameter, scales = "free_x") + 
       geom_hline(yintercept = 0, linetype = "dashed") + 
@@ -993,10 +936,11 @@ plot_traits_vs_sensitivity <- function(traits, disturbance_sensitivity, disturba
   # Use the right disturbance sensitivity dataset
   eval(parse(text = paste0("disturbance_sensitivity.in <- disturbance_sensitivity$", disturbance.in)))
   
-  # Identify the right color to use for the plot
-  if(disturbance.in == "fire") color.in <- "#F77F00"
-  if(disturbance.in == "other") color.in <- "#90A955"
-  if(disturbance.in == "storm") color.in <- "#4361EE"
+  # Create a vector of colors for plotting
+  color.in <- (data.frame(disturbance = c("biotic", "fire", "other", "snow", "storm"), 
+                              color = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")) %>%
+                     filter(disturbance == disturbance.in) %>%
+                     arrange(disturbance))$color
   
   # Loop on all traits
   for(trait.i in colnames(traits)[which(colnames(traits) != "species")]){
@@ -1018,7 +962,11 @@ plot_traits_vs_sensitivity <- function(traits, disturbance_sensitivity, disturba
     # Fit a model
     model.i <- lm(sensitivity.logit ~ trait, weights = w, data = data.i)
     
-    # Plot predictions pca1
+    # Name of the trait formatted for plotting
+    trait.label = ifelse(
+      substr(trait.i, 1, 3) != "TRY", trait.i,
+      paste0(gsub("\\_.+", "", gsub("TRY\\_", "", trait.i)), " (", gsub(".+\\_", "", gsub("TRY\\_", "", trait.i)), ")"))
+    # Plot predictions 
     plot.i <- data.i %>%
       mutate(fit.logit = predict(model.i, newdata = .), 
              fit.se = predict(model.i, newdata = ., se.fit = TRUE)$se.fit,
@@ -1026,12 +974,11 @@ plot_traits_vs_sensitivity <- function(traits, disturbance_sensitivity, disturba
              fit.inf = plogis(fit.logit - fit.se), 
              fit.sup = plogis(fit.logit + fit.se)) %>%
       ggplot(aes(x = trait, y = p, group = 1)) + 
-      geom_errorbar(aes(ymin = p_025, ymax = p_975), width = 0) +
-      geom_point(size = 2, shape = 21, fill = color.in, color = "black") + 
-      geom_line(aes(y = fit)) + 
-      geom_line(aes(y = fit.inf), linetype = "dashed") + 
-      geom_line(aes(y = fit.sup), linetype = "dashed") + 
-      ylab(paste0("Sensitivity to ", disturbance.in, " disturbance")) + xlab(trait.i) +
+      geom_errorbar(aes(ymin = p_025, ymax = p_975), width = 0, color = "#343A40") +
+      geom_point(size = 2, shape = 21, fill = color.in, color = "#343A40") + 
+      geom_line(aes(y = fit), color = "black") + 
+      geom_ribbon(aes(ymin = fit.inf, ymax = fit.sup), alpha = 0.5, fill = color.in) +
+      ylab(paste0("Sensitivity to ", disturbance.in, " disturbance")) + xlab(trait.label) +
       theme(panel.background = element_rect(color = "black", fill = "white"), 
             panel.grid = element_blank()) + 
       ggtitle(paste0("F = ", round(anova(model.i)[1, 4], digits = 1), ", ",
@@ -1047,6 +994,31 @@ plot_traits_vs_sensitivity <- function(traits, disturbance_sensitivity, disturba
   
   return(out)
   
+}
+
+#' Plot traits vs disturbance sensitivity for all disturbances
+#' @param traits dataset containing trait values per species
+#' @param disturbance_sensitivity dataset containing disturbance sensitivity per species
+#' @param dir.in where to export the plots
+plot_traits_vs_sensitivity_allDist <- function(traits, disturbance_sensitivity, dir.in){
+  
+  # Initialize output
+  out <- c()
+  
+  # All disturbances 
+  disturbances.in <- names(disturbance_sensitivity)
+  
+  # Loop on all disturbances
+  for(i in 1:length(disturbances.in)){
+    # Apply function for disturbance i
+    files.i <- plot_traits_vs_sensitivity(traits, disturbance_sensitivity, disturbances.in[i], 
+                                          paste(dir.in, disturbances.in[i], sep = "/"))
+    # Add file to the final output
+    out <- c(out, files.i)
+  }
+  
+  # Return output
+  return(files.i)
 }
 
 
@@ -1069,10 +1041,10 @@ plot_gbif_vs_sensitivity <- function(gbif_file, disturbance_sensitivity, disturb
   # Use the right disturbance sensitivity dataset
   eval(parse(text = paste0("disturbance_sensitivity.in <- disturbance_sensitivity$", disturbance.in)))
   
-  # Identify the right color to use for the plot
-  if(disturbance.in == "fire") color.in <- "#F77F00"
-  if(disturbance.in == "other") color.in <- "#90A955"
-  if(disturbance.in == "storm") color.in <- "#4361EE"
+  # Create a vector of colors for plotting
+  color.in <- (data.frame(disturbance = c("biotic", "fire", "other", "snow", "storm"), 
+                              color = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")) %>%
+                     filter(disturbance == disturbance.in))$color
   
   # Loop on all climate variables
   for(var.i in var.in){

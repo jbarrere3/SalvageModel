@@ -109,7 +109,7 @@ format_data_model <- function(FUNDIV_tree, FUNDIV_plot, Climate, species){
     summarize(n.per.species = sum(n.indiv.per.plotcode), 
               n.plot.per.species = n()) %>%
     ungroup() %>%
-    mutate(enough.individuals = ifelse((n.per.species > 200 & n.plot.per.species > 20), 1, 0), 
+    mutate(enough.individuals = ifelse((n.per.species > 150 & n.plot.per.species > 15), 1, 0), 
            species.ag = case_when((enough.individuals == 0 & group == "Angiosperms") ~ "Other broadleaf", 
                                   (enough.individuals == 0 & group == "Gymnosperms") ~ "Other conifer",
                                   enough.individuals == 1  ~ species)) %>%

@@ -165,30 +165,22 @@ list(
     traits_TRY, disturbance_sensitivity_bis, "fig/real_data/reference_bis/traits_TRY"), format = "file"), 
   
   ##  Climate vs sensitivity regressions
-  # -- Storm
-  tar_target(fig_rda_gbif_storm, plot_rda_traits_vs_sensitivity(
-    traits = fread(gbif_file) %>% dplyr::select(species, mean_mat, mean_tmin, mean_map), 
-    disturbance_sensitivity = get_disturbance_sensivity(jags.model, data_jags, data_model, dbh.ref = 250, I.ref = 0.6)$storm, 
-    file.in = "fig/real_data/reference/gbif/rda_storm.jpg"), 
-    format = "file"),
-  # -- Other
-  tar_target(fig_rda_gbif_other, plot_rda_traits_vs_sensitivity(
-    traits = fread(gbif_file) %>% dplyr::select(species, mean_mat, mean_tmin, mean_map), 
-    disturbance_sensitivity = get_disturbance_sensivity(jags.model, data_jags, data_model, dbh.ref = 250, I.ref = 0.6)$other, 
-    file.in = "fig/real_data/reference/gbif/rda_other.jpg"), 
-    format = "file"), 
-  # -- Fire
-  tar_target(fig_rda_gbif_fire, plot_rda_traits_vs_sensitivity(
-    traits = fread(gbif_file) %>% dplyr::select(species, mean_mat, mean_tmin, mean_map), 
-    disturbance_sensitivity = get_disturbance_sensivity(jags.model, data_jags, data_model, dbh.ref = 250, I.ref = 0.6)$fire, 
-    file.in = "fig/real_data/reference/gbif/rda_fire.jpg"), 
-    format = "file"), 
-  # -- Biotic
-  tar_target(fig_rda_gbif_biotic, plot_rda_traits_vs_sensitivity(
-    traits = fread(gbif_file) %>% dplyr::select(species, mean_mat, mean_tmin, mean_map), 
-    disturbance_sensitivity = get_disturbance_sensivity(jags.model_bis, data_jags_bis, data_model_bis, dbh.ref = 250, I.ref = 0.6)$fire, 
-    file.in = "fig/real_data/reference_bis/gbif/rda_biotic.jpg"), 
-    format = "file"), 
+  # -- For reference model
+  tar_target(fig_rda_gbif, plot_rda_traits_vs_sensitivity_allDist(
+    traits = fread(gbif_file) %>% dplyr::select(species, mat = mean_mat, tmin = mean_tmin, map = mean_map), 
+    disturbance_sensitivity, "fig/real_data/reference/rda_climate_vs_sensitivity.jpg")),
+  # -- For reference model bis
+  tar_target(fig_rda_gbif_bis, plot_rda_traits_vs_sensitivity_allDist(
+    traits = fread(gbif_file) %>% dplyr::select(species, mat = mean_mat, tmin = mean_tmin, map = mean_map), 
+    disturbance_sensitivity_bis, "fig/real_data/reference_bis/rda_climate_vs_sensitivity.jpg")),
+  
+  ## Extract trait analysis in a table
+  tar_target(table_result_trait, export_trait_result_latex(traits, traits_TRY, disturbance_sensitivity,
+                                                           "table/reference_vs_traits.tex"), 
+             format = "file"),
+  tar_target(table_result_trait_bis, export_trait_result_latex(traits, traits_TRY, disturbance_sensitivity_bis,
+                                                           "table/reference_vs_traits_bis.tex"), 
+             format = "file"),
   
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -198,8 +190,16 @@ list(
   tar_target(fig_harvest_death_rate, plot_harvest_and_death_rate(
     data_model, "fig/exploratory/death_harvest_rates.png"), format = "file"), 
   
-  # Make a map of disturbance intensity
+  # Make a map of disturbance intensity for the reference model
   tar_target(fig_disturbance_intensity, map_disturbance_intensity(
-    jags.model, data_jags, FUNDIV_plot, "fig/real_data/reference/map_intensity.png"))
+    jags.model, data_jags, FUNDIV_plot, "fig/real_data/reference/map_intensity.png")), 
+  tar_target(fig_disturbance_intensity.2, map_disturbance_intensity_ter(
+    jags.model, data_jags, FUNDIV_plot, "fig/real_data/reference/map_intensity2.png")), 
+  
+  # Make a map of disturbance intensity for model with all disturbances
+  tar_target(fig_disturbance_intensity_bis, map_disturbance_intensity_bis(
+    jags.model_bis, data_jags_bis, FUNDIV_plot_bis, "fig/real_data/reference_bis/map_intensity.png")), 
+  tar_target(fig_disturbance_intensity_bis.2, map_disturbance_intensity_ter(
+    jags.model_bis, data_jags_bis, FUNDIV_plot_bis, "fig/real_data/reference_bis/map_intensity2.png"))
   
 )

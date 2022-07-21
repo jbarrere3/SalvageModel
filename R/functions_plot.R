@@ -196,56 +196,41 @@ map_disturbance_intensity <- function(jags.model, data_jags, FUNDIV_plot, file.i
       gather(key = "iter", value = "I", colnames(.)[which(colnames(.) != "plotcode")]) %>%
       group_by(plotcode) %>%
       summarize(intensity = mean(I)) %>%
-      mutate(disturbance = disturbances.in[i]) %>%
+      mutate(disturbance = paste0(toupper(substr(disturbances.in[i], 1, 1)), 
+                                  substr(disturbances.in[i], 2, nchar(disturbances.in[i])))) %>%
+      mutate(disturbance = factor(disturbance)) %>%
       left_join(FUNDIV_plot, by = "plotcode") %>%
-      dplyr::select("plotcode", "latitude", "longitude", 
-                    "disturbance", "intensity") %>% 
-      spread(key = "disturbance", value = "intensity") %>%
+      dplyr::select("plotcode", "latitude", "longitude", "intensity", "disturbance") %>% 
       st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant")
     
-    # Add to the output list
-    eval(parse(text = paste0("data.plot$", disturbances.in[i], " <- data.i")))
+    # Add to the output dataset
+    if(i == 1) data <- data.i
+    else data <- rbind(data, data.i)
   }
   
-  ## - First plot for the countries only
+  ## - Final plot
   plot.out <- ne_countries(scale = "medium", returnclass = "sf") %>%
+    mutate(keep = ifelse(sovereignt %in% c("France", "Spain", "Finland"), "yes", "no")) %>%
     ggplot(aes(geometry = geometry)) +
-    geom_sf(fill = "#343A40", color = "lightgray", show.legend = F) + 
-    annotation_scale(location = "br", width_hint = 0.2) +
-    geom_rect(aes(xmin = -9.7, xmax = 9.7, ymin = 36, ymax = 51.5), 
-              color = "#BA181B", fill = NA) +
-    geom_rect(aes(xmin = 20, xmax = 31.5, ymin = 59.5, ymax = 70.5), 
-              color = "#BA181B", fill = NA)   + 
-    # Add other disturbance
-    geom_sf(data = data.plot$other, shape = 16, aes(color = other), 
-            show.legend = "point", size = 1) +
-    scale_color_gradient2(low = "white", mid = "#90A955", high = "black", midpoint = 0.3)  +
-    new_scale_colour() +
-    # Add storm disturbance
-    geom_sf(data = data.plot$storm, shape = 16, aes(color = storm), 
-            show.legend = "point", size = 1) +
-    scale_color_gradient2(low = "white", mid = "#4361EE", high = "black", midpoint = 0.3)  +
-    new_scale_colour() +
-    # Add fire disturbance
-    geom_sf(data = data.plot$fire, shape = 16, aes(color = fire), 
-            show.legend = "point", size = 1) +
-    scale_color_gradient2(low = "white", mid = "#F77F00", high = "black", midpoint = 0.3) +
-    # Finish formatting
-    coord_sf(xlim = c(-10, 32), ylim = c(36, 71)) +
+    geom_sf(aes(fill = keep), color = "white", show.legend = F) + 
+    scale_fill_manual(values = c("#8D99AE", "#343A40")) +
+    annotation_scale(location = "br", width_hint = 0.2) + 
+    geom_sf(data = data, shape = 16, aes(color = intensity), 
+            show.legend = "point", size = 0.1) +
+    scale_color_gradient2(low = "#EDF2F4", mid = "#EF233C", high = "#D90429", midpoint = 0.4)  +
+    facet_wrap(~ disturbance) +
+    guides(fill = FALSE) +
     theme(panel.background = element_rect(color = 'black', fill = 'white'), 
-          panel.grid = element_blank(),
-          axis.text = element_text(size = 20),
-          legend.text = element_text(size = 16),
-          legend.title = element_text(size = 18),
-          legend.box = "horizontal",
-          legend.background = element_blank(),
-          legend.box.background = element_rect(colour = "black"), 
-          legend.position = c(0.2, 0.9))
-  
-  
+          panel.grid = element_blank(), 
+          strip.background = element_blank(), 
+          strip.text = element_text(size = 15)) + 
+    coord_sf(xlim = c(-10, 32), ylim = c(36, 71))
   
   ## - save the plot
-  ggsave(file.in, plot.out, width = 26, height = 33, units = "cm", dpi = 600)
+  if(length(disturbances.in) == 3) ggsave(file.in, plot.out, width = 25, height = 12.5, units = "cm", dpi = 600)
+  if(length(disturbances.in) > 3) ggsave(file.in, (plot.out + theme(legend.position = c(0.9, 0.2),
+                                                                    legend.justification = c(0.9, 0.2))),
+                                         width = 20, height = 18, units = "cm", dpi = 600)
   return(file.in)
   
 }

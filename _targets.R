@@ -22,7 +22,7 @@ library(targets)
 lapply(grep("R$", list.files("R"), value = TRUE), function(x) source(file.path("R", x)))
 # install if needed and load packages
 packages.in <- c("dplyr", "ggplot2", "RCurl", "httr", "tidyr", "data.table", "sp", "R2jags", "rstan", "cowplot",
-                 "ggmcmc", "taxize", "rnaturalearth", "ggspatial", "sf", "ggnewscale", "readxl", "scales", 
+                 "ggmcmc", "taxize", "rnaturalearth", "rnaturalearthdata", "ggspatial", "sf", "ggnewscale", "readxl", "scales", 
                  "FactoMineR", "ade4", "factoextra", "xtable", "MASS", "vegan", "Taxonstand", "WorldFlora")
 for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.packages()))) install.packages(packages.in[i])
 # Targets options

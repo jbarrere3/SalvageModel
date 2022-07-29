@@ -147,7 +147,8 @@ format_data_model <- function(FUNDIV_tree, FUNDIV_plot, Climate, species){
       # Compute stand quadratic diameter
       filter(!is.na(weight1)) %>%
       mutate(dbh2.W = (dbh1^2)*weight1, 
-             dqm = sqrt(sum(dbh2.W, na.rm = TRUE)/sum(weight1, na.rm  = TRUE))) %>%
+             dqm = sqrt(sum(dbh2.W, na.rm = TRUE)/sum(weight1, na.rm  = TRUE)), 
+             stock = sum(ba_ha1)) %>%
       ungroup() %>%
       # compute logratio dbh/dqm
       mutate(log_dbh_dqm = log(dbh1/dqm)) %>%
@@ -159,7 +160,7 @@ format_data_model <- function(FUNDIV_tree, FUNDIV_plot, Climate, species){
       filter(!is.na(sgdd) & !is.na(wai) & !is.na(comp) & !is.na(species.ag)) %>%
       # Select variables and remove NAs
       dplyr::select(plotcode, treecode, country, species = species.ag, time, h, d, a, dbh = dbh1, comp, 
-                    sgdd, wai, dqm, log_dbh_dqm)
+                    sgdd, wai, dqm, log_dbh_dqm, stock)
     
     # Add to the output list
     eval(parse(text = paste0("out$", disturbances.in[i], " <- data.i")))
@@ -175,7 +176,7 @@ format_data_model <- function(FUNDIV_tree, FUNDIV_plot, Climate, species){
 #' Center and Scale variables before fitting one fo the models that includes dqm
 #' @param data_model Tree data formated for the IPM. 
 #' @param var Variables to scale (character vector)
-scale_data_model <- function(data_model,  var = c("dbh", "dqm", "comp", "sgdd", "wai", "log_dbh_dqm")){
+scale_data_model <- function(data_model,  var = c("dbh", "dqm", "comp", "sgdd", "wai", "log_dbh_dqm", "stock")){
   id_var <- which(colnames(data_model) %in% var) 
   out <- data_model
   unscaled = as.matrix(out[, id_var])
@@ -238,6 +239,68 @@ generate_data_jags <- function(data_model){
       time = data.out.i$time,
       dbh = data.out.i$dbh,
       logratio = data.out.i$log_dbh_dqm)
+    # Final list for disturbance i
+    out.i <- list(data_jags = data_jags.i, 
+                  plotcode.table = plotcode.table.i, 
+                  species.table = species.table.i, 
+                  country.table = country.table.i)
+    # Add list i to the global list
+    eval(parse(text = paste0("out$", disturbances.in[i], " <- out.i")))
+    
+  }
+  
+  return(out)
+}
+
+
+#' generate data for the jags model with stocking as explanatory variable
+#' @param data_model dataset where the tree status (dead, alive or harvested) is not simulated
+generate_data_jags_stock <- function(data_model){
+  
+  # Initialize output list
+  out <- list()
+  
+  # Loop on all disturbances
+  disturbances.in <- names(data_model)
+  
+  for(i in 1:length(disturbances.in)){
+    # Store dataframe for disturbance i in object data.i 
+    eval(parse(text = paste0("data.i <- data_model$", disturbances.in[i])))
+    # Scale the dataset
+    data.i_scaled <- scale_data_model(data.i)
+    # Replace plotcode by a number
+    plotcode.table.i <- data.frame(plotcode = unique(data.i_scaled$plotcode), 
+                                   plot = c(1:length(unique(data.i_scaled$plotcode))))
+    # Replace species by a number 
+    species.table.i <- data.frame(species = unique(data.i_scaled$species), 
+                                  sp = c(1:length(unique(data.i_scaled$species))))
+    # Replace country by a number
+    country.table.i <- data.frame(country = unique(data.i_scaled$country), 
+                                  co = c(1:length(unique(data.i_scaled$country))))
+    # Format final data
+    data.out.i <- data.i_scaled %>%
+      # Determine if tree is dead or not
+      mutate(d = ifelse(a == 1, 0, 1)) %>%
+      # Add plot code
+      left_join(plotcode.table.i, by = "plotcode") %>%
+      # Add species code
+      left_join(species.table.i, by = "species") %>%
+      # Add country code
+      left_join(country.table.i, by = "country")
+    
+    # Create the data list
+    data_jags.i <- list(
+      Ntrees = NROW(data.out.i),
+      Nplot = NROW(plotcode.table.i), 
+      Nspecies = NROW(species.table.i),
+      Ncountry = NROW(country.table.i),
+      plot = data.out.i$plot, 
+      sp = data.out.i$sp,
+      co = data.out.i$co,
+      d = data.out.i$d,
+      time = data.out.i$time,
+      dbh = data.out.i$dbh,
+      stock = data.out.i$stock)
     # Final list for disturbance i
     out.i <- list(data_jags = data_jags.i, 
                   plotcode.table = plotcode.table.i, 

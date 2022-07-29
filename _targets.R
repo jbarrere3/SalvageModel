@@ -68,9 +68,13 @@ list(
   tar_target(data_model, format_data_model(FUNDIV_tree, FUNDIV_plot, Climate, species)), 
   tar_target(data_model_bis, format_data_model(FUNDIV_tree, FUNDIV_plot_bis, Climate, species)), 
   
-  # Prepare data as model input
+  # Prepare data as input for the model with logratio effect
   tar_target(data_jags, generate_data_jags(data_model)), 
   tar_target(data_jags_bis, generate_data_jags(data_model_bis)), 
+  
+  # Prepare data as input for the model with stock effect
+  tar_target(data_jags_stock, generate_data_jags_stock(data_model)), 
+  tar_target(data_jags_stock_bis, generate_data_jags_stock(data_model_bis)), 
   
 
   
@@ -78,8 +82,12 @@ list(
   # -- Step 3 - Model fit ----
   
   # Fit the reference model
-  tar_target(jags.model, fit_mortality(data_jags, n.chains = 3, n.iter = 2000, n.burn = 200, n.thin = 20)), 
-  tar_target(jags.model_bis, fit_mortality(data_jags_bis, n.chains = 3, n.iter = 2000, n.burn = 200, n.thin = 20)), 
+  tar_target(jags.model, fit_mortality(data_jags, n.chains = 3, n.iter = 1000, n.burn = 200, n.thin = 20)), 
+  tar_target(jags.model_bis, fit_mortality(data_jags_bis, n.chains = 3, n.iter = 1000, n.burn = 200, n.thin = 20)), 
+  
+  # Fit the model with stocking
+  tar_target(jags.model_stock, fit_mortality_stock(data_jags_stock, n.chains = 3, n.iter = 1000, n.burn = 200, n.thin = 20)), 
+  tar_target(jags.model_stock_bis, fit_mortality_stock(data_jags_stock_bis, n.chains = 3, n.iter = 1000, n.burn = 200, n.thin = 20)), 
   
   # Extract model predictions
   tar_target(disturbance_sensitivity, get_disturbance_sensivity(jags.model, data_jags, data_model, 
@@ -94,6 +102,10 @@ list(
   tar_target(fig_convergence, plot_convergence(jags.model, data_jags, "fig/real_data/reference/convergence"), 
              format = "file"),
   tar_target(fig_convergence_bis, plot_convergence(jags.model_bis, data_jags_bis, "fig/real_data/reference_bis/convergence"), 
+             format = "file"),
+  tar_target(fig_convergence_stock, plot_convergence(jags.model_stock, data_jags_stock, "fig/real_data/reference_stock/convergence"), 
+             format = "file"),
+  tar_target(fig_convergence_stock_bis, plot_convergence(jags.model_stock_bis, data_jags_stock_bis, "fig/real_data/reference_stock_bis/convergence"), 
              format = "file"),
   
   # Plot the predictions of the model
@@ -130,6 +142,14 @@ list(
     jags.model_bis, data_jags_bis, data_model_bis, 
     file.in = "fig/real_data/reference_bis/param_per_species.png"), 
     format = "file"),
+  tar_target(fig_param_per_species_stock, plot_param_per_species_stock(
+    jags.model_stock, data_jags_stock, data_model, 
+    file.in = "fig/real_data/reference_stock/param_per_species.png"), 
+    format = "file"),
+  tar_target(fig_param_per_species_stock_bis, plot_param_per_species_stock(
+    jags.model_stock_bis, data_jags_stock_bis, data_model_bis, 
+    file.in = "fig/real_data/reference_stock_bis/param_per_species.png"), 
+    format = "file"),
   
   
   
@@ -143,6 +163,7 @@ list(
   tar_target(bark.thickness_file, "data/traits/bark_thickness_NFI.csv", format = "file"),
   tar_target(TRY_file, "data/traits/TRY_data_request_21092.txt", format = "file"),
   tar_target(gbif_file, "data/traits/sp_gbif_climate.csv", format = "file"),
+  tar_target(gbif_disturbance_file, "data/traits/sp_gbif_disturbance.csv", format = "file"),
   
   ## - Compile traits data
   tar_target(traits_TRY, compile_traits_TRY(TRY_file, get_species_list(data_model))),
@@ -166,13 +187,13 @@ list(
   
   ##  Climate vs sensitivity regressions
   # -- For reference model
-  tar_target(fig_rda_gbif, plot_rda_traits_vs_sensitivity_allDist(
-    traits = fread(gbif_file) %>% dplyr::select(species, mat = mean_mat, tmin = mean_tmin, map = mean_map), 
-    disturbance_sensitivity, "fig/real_data/reference/rda_climate_vs_sensitivity.jpg")),
+  tar_target(fig_rda_gbif, plot_rda_climate(disturbance_sensitivity, gbif_file, gbif_disturbance_file, 
+                                            "fig/real_data/reference/rda_climate_vs_sensitivity.jpg"), 
+             format = "file"),
   # -- For reference model bis
-  tar_target(fig_rda_gbif_bis, plot_rda_traits_vs_sensitivity_allDist(
-    traits = fread(gbif_file) %>% dplyr::select(species, mat = mean_mat, tmin = mean_tmin, map = mean_map), 
-    disturbance_sensitivity_bis, "fig/real_data/reference_bis/rda_climate_vs_sensitivity.jpg")),
+  tar_target(fig_rda_gbif_bis, plot_rda_climate(disturbance_sensitivity_bis, gbif_file, gbif_disturbance_file, 
+                                            "fig/real_data/reference_bis/rda_climate_vs_sensitivity.jpg"), 
+             format = "file"),
   
   ## Extract trait analysis in a table
   tar_target(table_result_trait, export_trait_result_latex(traits, traits_TRY, disturbance_sensitivity,
@@ -200,6 +221,12 @@ list(
   tar_target(fig_disturbance_intensity_bis, map_disturbance_intensity_bis(
     jags.model_bis, data_jags_bis, FUNDIV_plot_bis, "fig/real_data/reference_bis/map_intensity.png")), 
   tar_target(fig_disturbance_intensity_bis.2, map_disturbance_intensity_ter(
-    jags.model_bis, data_jags_bis, FUNDIV_plot_bis, "fig/real_data/reference_bis/map_intensity2.png"))
+    jags.model_bis, data_jags_bis, FUNDIV_plot_bis, "fig/real_data/reference_bis/map_intensity2.png")), 
+  
+  # Plot trends in disturbance occurrence and severity over time
+  tar_target(fig_disturbance_trends, plot_disturbance_trends(FUNDIV_plot, FUNDIV_tree, "fig/exploratory/disturbance_trends.jpg"), 
+             format = "file"), 
+  tar_target(fig_disturbance_trends_bis, plot_disturbance_trends(FUNDIV_plot_bis, FUNDIV_tree, "fig/exploratory/disturbance_trends_bis.jpg"), 
+             format = "file")
   
 )

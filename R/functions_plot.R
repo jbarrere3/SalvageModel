@@ -137,7 +137,7 @@ plot_disturbance_trends <- function(FUNDIV_plot, FUNDIV_tree, file.in){
       if(disturbances.in[j] != "all") data.ij <- mutate(data.ij, disturbed = ifelse(disturbance.nature == disturbances.in[j], 1, 0))
       
       # Make sure that there are occurrences of disturbance j in country i
-      if(sum(data.ij$disturbed, na.rm = TRUE) > 0){
+      if(sum(data.ij$disturbed, na.rm = TRUE) > 50){
         
         # One data set for proportion, one for severity
         # -- Proportion

@@ -495,7 +495,7 @@ get_species_list <- function(data_model){
 #' @param logratio.ref value of the ratio dbh/dqm for which to predict values
 #' @param I.ref disturbance intensity for which to predict values
 get_disturbance_sensivity <- function(jags.model, data_jags, data_model, 
-                                      dbh.ref = 300, logratio.ref = 0, I.ref = 0.5){
+                                      dbh.ref = 300, logratio.ref = 0, I.ref = 0.7){
   
   # Initialize output
   out <- list()

@@ -817,7 +817,7 @@ plot_predicted_vs_observed <- function(jags.model, data_jags, data_model,
 #' @param I.ref disturbance intensity for which to predict values
 #' @param file.in Name and path of the plot to save
 plot_param_per_species <- function(jags.model, data_jags, data_model, 
-                                   dbh.ref = 300, logratio.ref = 0, I.ref = 0.5, 
+                                   dbh.ref = 300, logratio.ref = 0, I.ref = 0.75, 
                                    file.in){
   
   # Initialize output
@@ -936,7 +936,7 @@ plot_param_per_species <- function(jags.model, data_jags, data_model,
 #' @param I.ref disturbance intensity for which to predict values
 #' @param file.in Name and path of the plot to save
 plot_param_per_species_stock <- function(jags.model, data_jags, data_model, 
-                                         dbh.ref = 300, stock.ref = 20, I.ref = 0.5, 
+                                         dbh.ref = 300, stock.ref = 20, I.ref = 0.75, 
                                          file.in){
   
   # Initialize output

@@ -1489,7 +1489,7 @@ plot_rda_climate <- function(disturbance_sensitivity, gbif_file, gbif_disturbanc
                           (ggplot() + theme_void()),
                           plot.rda, nrow = 1, labels = c("(a)", "", ""), rel_widths = c(0.6, 0.1, 1))
     # Save the plot
-    ggsave(file.in, plot.out, width = 35, height = 20, units = "cm", dpi = 600)
+    ggsave(file.in, plot.out, width = 35, height = 20, units = "cm", dpi = 600, bg = "white")
   }
   
   # If up to three disturbances
@@ -1501,7 +1501,7 @@ plot_rda_climate <- function(disturbance_sensitivity, gbif_file, gbif_disturbanc
     plot.out <- plot_grid(plot.pca, plot.rda, nrow = 1, align = "v", 
                           labels = c("(a)", ""), rel_widths = c(0.37, 1))
     # Save the plot
-    ggsave(file.in, plot.out, width = 35, height = 13, units = "cm", dpi = 600)
+    ggsave(file.in, plot.out, width = 35, height = 13, units = "cm", dpi = 600, bg = "white")
   }
   
   

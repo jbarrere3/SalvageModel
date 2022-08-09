@@ -541,8 +541,16 @@ get_disturbance_sensivity <- function(jags.model, data_jags, data_model,
     param_per_species.i <- extract_param_per_species(jags.model[[i]], data_jags[[i]])
     if(disturbances.in[[i]] != "storm") param_per_species.i$a1 = NA_real_
     param_per_species.i <- param_per_species.i %>%
+      left_join((data_model[[i]] %>%
+                   group_by(species, country) %>%
+                   summarize(weight = n())), 
+                by = c("country", "species")) %>%
+      mutate(weight = ifelse(is.na(weight), 1, weight)) %>%
       group_by(species, iter) %>%
-      summarise(a0 = mean(a0), a1 = mean(a1), b = mean(b), c = mean(c))
+      summarise(a0 = sum(a0*weight)/sum(weight), 
+                a1 = sum(a1*weight)/sum(weight), 
+                b = sum(b*weight)/sum(weight), 
+                c = sum(c*weight)/sum(weight))
     
     # Format data 
     data.i <- expand.grid(species = data_jags[[i]]$species.table$species,
@@ -664,6 +672,100 @@ export_trait_result_latex <- function(traits, traits_TRY, disturbance_sensitivit
                and scaled trait values to disturbance sensitivity", 
                label = "table_traits"), 
         include.rownames=FALSE, hline.after = c(1, 2, dim(out)[1]), 
+        include.colnames = FALSE, caption.placement = "top", file = file.in)
+  
+  #return output
+  return(file.in)
+}
+
+
+
+
+#' Extract statistics of the models predicting the sensitivity to all disturbances vs traits
+#' @param traits dataset containing trait values per species
+#' @param traits_TRY dataset containing trait values per species from TRY
+#' @param disturbance_sensitivity dataset containing disturbance sensitivity per species
+#' @param disturbance_sensitivity_bis list of dataset containing disturbance sensitivity to snow and biotic
+#' @param file.in Name of the file to save (including path)
+export_trait_allDist_latex <- function(traits, traits_TRY, disturbance_sensitivity, 
+                                       disturbance_sensitivity_bis, file.in){
+  
+  ## - Assemble the two disturbance sensitivity files
+  disturbance_sensitivity.in <- c(disturbance_sensitivity, disturbance_sensitivity_bis[c("snow", "biotic")])
+  
+  ## - Loop on all disturbance types to assemble data sets
+  for(i in 1:length(names(disturbance_sensitivity.in))){
+    data.in.i <- as.data.frame(disturbance_sensitivity.in[[i]]) %>%
+      mutate(disturbance = names(disturbance_sensitivity.in)[i])
+    if(i == 1) data.in <- data.in.i
+    if(i > 1) data.in <- rbind(data.in, data.in.i)
+  }
+  
+  ## - Rearrange traits table
+  traits.in <- traits %>%
+    left_join(traits_TRY, by = "species") %>%
+    dplyr::select(
+      "species", 
+      "Wood density" = "wood.density_g.cm3", 
+      "Shade tolerance" = "shade.tolerance", 
+      "Root mass fraction" = "Root_mass_fraction", 
+      "Bark thickness" = "bark.thickness_mm", 
+      "H to dbh ratio" = "height.dbh.ratio", 
+      "Leaf CN ratio" = "TRY_leaf.CN.ratio_g.cm3", 
+      "Leaf NP ratio" = "TRY_leaf.NP.ratio_g.cm3", 
+      "Leaf Nmass" = "TRY_leaf.N.mass_mg.g", 
+      "Leaf Pmass" = "TRY_leaf.P.mass_mg.g", 
+      "SLA" = "TRY_leaf.sla_mm2mg-1", 
+      "Leaf thickness" = "TRY_leaf.thickness_mm", 
+      "Lifespan" = "TRY_plant.lifespan_year", 
+      "Stomata conductance" = "TRY_stomata.conductance_millimolm-2s-1"
+    )
+  
+  # Center and scale the trait values
+  traits.in <- scale_data_model(traits.in, var = colnames(traits.in)[c(2:dim(traits.in)[2])])
+  
+  # Initialize table with statistics
+  table.out <- data.frame(trait = "", Est. = "Est.", 
+                          Chisq. = "Chisq.", p = "pval.")
+  
+  # Loop on all traits
+  for(trait.i in colnames(traits.in)[which(colnames(traits.in) != "species")]){
+    
+    # Format data for the model
+    data.i <- data.in %>%
+      left_join((traits.in %>% dplyr::select("species", "trait" = trait.i)), 
+                by = "species") %>%
+      # Logit transformation and weight
+      mutate(sensitivity.logit = log(p/(1 - p)), 
+             w = 1/(p_975 - p_025)) %>%
+      # remove NA
+      drop_na()
+    
+    # Fit a model
+    model.i <- lmer(sensitivity.logit ~ trait + (1|species), weights = w, data = data.i)
+    # Results
+    table.i <- data.frame(
+      trait = trait.i, 
+      Est. = as.character(round(summary(model.i)$coefficients[2, 1], digits = 2)), 
+      Chisq. = as.character(round(Anova(model.i)[1, 1], digits = 2)), 
+      p = scales::pvalue(Anova(model.i)[1, 3], accuracy = 0.01)
+    )
+    # Add to the final output
+    table.out <- rbind(table.out, table.i)
+  }
+  
+  # Remove column names
+  colnames(table.out) <- NULL
+  
+  # Create output dir if necessary
+  create_dir_if_needed(file.in)
+  
+  # create a tex file
+  print(xtable(table.out, type = "latex", 
+               caption = "Statistics of the logistic models predicting the effect of centered 
+               and scaled trait values to the sensitivity to all disturbance types.", 
+               label = "table_traits_allDist"), 
+        include.rownames=FALSE, hline.after = c(1, dim(table.out)[1]), 
         include.colnames = FALSE, caption.placement = "top", file = file.in)
   
   #return output

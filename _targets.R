@@ -23,7 +23,7 @@ lapply(grep("R$", list.files("R"), value = TRUE), function(x) source(file.path("
 # install if needed and load packages
 packages.in <- c("dplyr", "ggplot2", "RCurl", "httr", "tidyr", "data.table", "sp", "R2jags", "rstan", "cowplot",
                  "ggmcmc", "taxize", "rnaturalearth", "ggspatial", "sf", "ggnewscale", "readxl", "scales", 
-                 "FactoMineR", "ade4", "factoextra", "xtable", "MASS", "vegan")
+                 "FactoMineR", "ade4", "factoextra", "xtable", "MASS", "vegan", "lme4", "car")
 for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.packages()))) install.packages(packages.in[i])
 # Targets options
 options(tidyverse.quiet = TRUE, 
@@ -53,11 +53,11 @@ list(
   # Merge data from the different NFI
   tar_target(FUNDIV_tree, rbind(FUNDIV_tree_FR, FUNDIV_tree_SP)),
   tar_target(FUNDIV_plot, rbind(FUNDIV_plot_FR, FUNDIV_plot_SP)),
-  tar_target(FUNDIV_plot_bis, rbind(FUNDIV_plot_FR, FUNDIV_plot_SP_bis)),
+  tar_target(FUNDIV_plot_bis, 
+             subset(rbind(FUNDIV_plot_FR, FUNDIV_plot_SP_bis), disturbance.nature %in% c("biotic", "snow"))),
   
   # Extract species information (genus, family, order)
   tar_target(species, get_species_info(FUNDIV_tree)),
-  
   
   
   
@@ -76,8 +76,6 @@ list(
   tar_target(data_jags_stock, generate_data_jags_stock(data_model)), 
   tar_target(data_jags_stock_bis, generate_data_jags_stock(data_model_bis)), 
   
-
-  
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # -- Step 3 - Model fit ----
   
@@ -91,9 +89,9 @@ list(
   
   # Extract model predictions
   tar_target(disturbance_sensitivity, get_disturbance_sensivity(jags.model, data_jags, data_model, 
-                                                                dbh.ref = 250, I.ref = 0.6)), 
+                                                                dbh.ref = 250, I.ref = 0.75)), 
   tar_target(disturbance_sensitivity_bis, get_disturbance_sensivity(jags.model_bis, data_jags_bis, data_model_bis, 
-                                                                dbh.ref = 250, I.ref = 0.6)), 
+                                                                dbh.ref = 250, I.ref = 0.75)), 
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # -- Step 4 - Plot model outputs ----
@@ -107,17 +105,6 @@ list(
              format = "file"),
   tar_target(fig_convergence_stock_bis, plot_convergence(jags.model_stock_bis, data_jags_stock_bis, "fig/real_data/reference_stock_bis/convergence"), 
              format = "file"),
-  
-  # Plot the predictions of the model
-  tar_target(fig_prediction_all, plot_prediction_all(
-    jags.model, data_jags, data_model, "fig/real_data/reference/prediction/all.png"), 
-    format = "file"),
-  tar_target(fig_prediction_all2, plot_prediction2(
-    jags.model, data_jags, data_model, "fig/real_data/reference/prediction/all2.png"), 
-    format = "file"),
-  tar_target(fig_prediction, plot_prediction(
-    jags.model, data_jags, data_model, "fig/real_data/reference/prediction"), 
-    format = "file"),
   
   
   # Observation vs prediction
@@ -187,11 +174,11 @@ list(
   
   ##  Climate vs sensitivity regressions
   # -- For reference model
-  tar_target(fig_rda_gbif, plot_rda_climate(disturbance_sensitivity, gbif_file, gbif_disturbance_file, 
+  tar_target(fig_rda_gbif, plot_rda_climate(disturbance_sensitivity, gbif_file, 
                                             "fig/real_data/reference/rda_climate_vs_sensitivity.jpg"), 
              format = "file"),
   # -- For reference model bis
-  tar_target(fig_rda_gbif_bis, plot_rda_climate(disturbance_sensitivity_bis, gbif_file, gbif_disturbance_file, 
+  tar_target(fig_rda_gbif_bis, plot_rda_climate(disturbance_sensitivity_bis, gbif_file, 
                                             "fig/real_data/reference_bis/rda_climate_vs_sensitivity.jpg"), 
              format = "file"),
   
@@ -202,6 +189,9 @@ list(
   tar_target(table_result_trait_bis, export_trait_result_latex(traits, traits_TRY, disturbance_sensitivity_bis,
                                                            "table/reference_vs_traits_bis.tex"), 
              format = "file"),
+  tar_target(table_result_trait_allDist, export_trait_allDist_latex(
+    traits, traits_TRY, disturbance_sensitivity, disturbance_sensitivity_bis, "table/traits_allDist.tex"), 
+    format = "file"),
   
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -217,12 +207,6 @@ list(
   tar_target(fig_disturbance_intensity.2, map_disturbance_intensity_ter(
     jags.model, data_jags, FUNDIV_plot, "fig/real_data/reference/map_intensity2.png")), 
   
-  # Make a map of disturbance intensity for model with all disturbances
-  tar_target(fig_disturbance_intensity_bis, map_disturbance_intensity_bis(
-    jags.model_bis, data_jags_bis, FUNDIV_plot_bis, "fig/real_data/reference_bis/map_intensity.png")), 
-  tar_target(fig_disturbance_intensity_bis.2, map_disturbance_intensity_ter(
-    jags.model_bis, data_jags_bis, FUNDIV_plot_bis, "fig/real_data/reference_bis/map_intensity2.png")), 
-  
   # Plot trends in disturbance occurrence and severity over time
   tar_target(fig_disturbance_trends, plot_disturbance_trends(FUNDIV_plot, FUNDIV_tree, "fig/exploratory/disturbance_trends.jpg"), 
              format = "file"), 
@@ -231,6 +215,27 @@ list(
   
   # Extract a table with statistics about disturbance per country
   tar_target(table_disurbance_stat, export_table_disturbance_stats(
-    FUNDIV_tree, FUNDIV_plot_bis, "table/disturbance_stat_bis.tex"), format = "file")
+    FUNDIV_tree, FUNDIV_plot_bis, "table/disturbance_stat_bis.tex"), format = "file"),
+  
+  
+  
+  
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # -- Step 7 - Plots for the manuscript ----
+  
+  # RDA VS climate
+  tar_target(fig_rda_climate_ms, plot_rda_climate_ms(
+    disturbance_sensitivity, disturbance_sensitivity_bis, gbif_file, 
+    gbif_disturbance_file, "fig/ms/sensitivity_vs_climate.jpg"), format = "file"), 
+  
+  # Make a map of disturbance intensity for model with all disturbances
+  tar_target(fig_disturbance_intensity_bis.2, map_disturbance_intensity_ter(
+    c(jags.model, jags.model_bis[c("snow", "biotic")]), c(data_jags, data_jags_bis[c("snow", "biotic")]), 
+    rbind(FUNDIV_plot_bis, FUNDIV_plot), "fig/ms/map_intensity.png")), 
+  
+  # Traits vs sensitivity all disturbance together
+  tar_target(fig_traits_vs_sensitivity_ms, plot_traits_vs_sensitivity_ms(
+    traits, traits_TRY, disturbance_sensitivity, disturbance_sensitivity_bis, 
+    "fig/ms/traits_vs_sensitivity.jpg"), format = "file")
   
 )

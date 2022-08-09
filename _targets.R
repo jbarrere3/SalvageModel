@@ -227,6 +227,10 @@ list(
   tar_target(fig_disturbance_trends, plot_disturbance_trends(FUNDIV_plot, FUNDIV_tree, "fig/exploratory/disturbance_trends.jpg"), 
              format = "file"), 
   tar_target(fig_disturbance_trends_bis, plot_disturbance_trends(FUNDIV_plot_bis, FUNDIV_tree, "fig/exploratory/disturbance_trends_bis.jpg"), 
-             format = "file")
+             format = "file"), 
+  
+  # Extract a table with statistics about disturbance per country
+  tar_target(table_disurbance_stat, export_table_disturbance_stats(
+    FUNDIV_tree, FUNDIV_plot_bis, "table/disturbance_stat_bis.tex"), format = "file")
   
 )

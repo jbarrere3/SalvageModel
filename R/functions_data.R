@@ -804,6 +804,92 @@ compile_traits_TRY <- function(TRY_file, species.in){
 
 
 
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+## Extract general information ---------
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
+#' Export a latex table with statistics about disturbance and number of trees and plots
+#' @param FUNDIV_tree Tree table formatted for FUNDIV
+#' @param FUNDIV_plot Plot table formatted for FUNDIV
+#' @param file.in Name of the file to save
+export_table_disturbance_stats <- function(FUNDIV_tree, FUNDIV_plot, file.in){
+  
+  # Initialize final table
+  table.out <- data.frame(col1 = "")
+  
+  # Table with the information on all countries 
+  table.allcountries <- FUNDIV_tree %>%
+    left_join((FUNDIV_plot %>% dplyr::select(plotcode, disturbance.nature)), 
+              by = "plotcode") %>%
+    filter(disturbance.nature %in% c("storm", "fire", "other", "snow", "biotic")) %>%
+    filter(treestatus != 1) %>%
+    mutate(dead = ifelse(treestatus == 2, 0, 1)) %>%
+    group_by(country, plotcode, disturbance.nature) %>%
+    summarize(n.trees = n(), 
+              death.rate = sum(dead, na.rm = TRUE)/n(),
+              ba.plot = sum(ba_ha1, na.rm = TRUE)) %>%
+    ungroup() %>%
+    group_by(country, disturbance.nature) %>%
+    summarize(n.plots = n(), 
+              n.trees.per.plot = mean(n.trees, na.rm = TRUE), 
+              n.trees = sum(n.trees, na.rm = TRUE), 
+              death.rate = mean(death.rate, na.rm = TRUE), 
+              basal.area = mean(ba.plot)) %>%
+    gather(key = "variable", value = "value", colnames(.)[c(3:dim(.)[2])]) %>%
+    mutate(value = ifelse(variable == "death.rate", 
+                          as.character(round(value, digits = 2)), 
+                          as.character(round(value, digits = 0)))) %>%
+    mutate(variable = gsub("\\.", "\\ ", variable)) %>%
+    spread(key = "disturbance.nature", value = "value") %>%
+    mutate(across(everything(), ~replace_na(.x, "")))
+  
+  # Finish to format the first line of the reference table
+  for(i in 3:dim(table.allcountries)[2]){
+    eval(parse(text = paste0("table.out$col", (i-1), " <- colnames(table.allcountries)[", i, "]")))
+  }
+  
+  # Create one table per country, and add it to the final table
+  for(j in 1:length(unique(table.allcountries$country))){
+    # First line of the table for country j
+    head.table.j <- as.data.frame(
+      matrix(nrow = 1, ncol = dim(table.out)[2], data = "", 
+             dimnames = list(c(""), colnames(table.out)))) %>%
+      mutate(col1 = toupper(unique(table.allcountries$country)[j]))
+    # Add an empty line on top to separate countries
+    if(j > 1) head.table.j <- rbind.data.frame(
+      matrix(nrow = 1, ncol = dim(table.out)[2], data = "", 
+             dimnames = list(c(""), colnames(table.out))),
+      head.table.j)
+    # Table with values for country j
+    table.country.j <- table.allcountries %>%
+      filter(country == unique(table.allcountries$country)[j]) %>%
+      ungroup() %>%
+      dplyr::select(-country)
+    colnames(table.country.j) <- colnames(head.table.j)
+    # Add to the final table
+    table.out <- rbind.data.frame(table.out, head.table.j, table.country.j)
+  }
+  
+  # Remove column names
+  colnames(table.out) <- NULL
+  
+  # Create output dir if necessary
+  create_dir_if_needed(file.in)
+  
+  # create a tex file
+  print(xtable(table.out, type = "latex", label = "dist_stat_table",
+               caption = "Mean number of trees, plots, number of trees per plot, 
+               basal area and death rate per country and per disturbance type"), 
+        include.rownames=FALSE, hline.after = c(0, 1, dim(table.out)[1]), 
+        include.colnames = FALSE, caption.placement = "top", file = file.in)
+  
+  #return output
+  return(file.in)
+}
+
 
 
 

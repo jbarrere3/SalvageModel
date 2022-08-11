@@ -218,11 +218,11 @@ fit_mortality <- function(data_jags, n.chains, n.iter, n.burn, n.thin){
   for(i in 1:length(disturbances.in)){
     print(paste0("Fit mortality model for ", disturbances.in[i], " disturbance"))
     # There's a specific model for storm
-    if(disturbances.in[i] == "storm"){
+    if(disturbances.in[i] %in% c("storm", "snow")){
       jags.i <- fit_mortality_storm(data_jags[[i]][[1]], n.chains, n.iter, n.burn, n.thin)
     } 
     # And one "classical model" for fire and other disturbance
-    if(disturbances.in[i] %in% c("fire", "other", "biotic", "snow")){
+    if(disturbances.in[i] %in% c("fire", "other", "biotic")){
       jags.i <- fit_mortality_other(data_jags[[i]][[1]], n.chains, n.iter, n.burn, n.thin)
     }
     # Add model to the output list

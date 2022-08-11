@@ -53,8 +53,6 @@ get_species_info <- function(FUNDIV_tree){
   return(out)
   
 }
-
-
 #' Format the data before fitting the reference mortality model
 #' @param FUNDIV_tree FUNDIV tree table
 #' @param FUNDIV_plot FUNDIV plot table
@@ -398,9 +396,9 @@ predict_jags_meanProba <- function(jags.model, data_jags, data_model){
       left_join(extract_param_per_species(jags.model[[i]], data_jags[[i]]), 
                 by = c("species", "iter", "country")) %>%
       # Add missing parameter
-      mutate(a1 = ifelse(disturbance == "storm", a1, NA_real_)) %>%
+      mutate(a1 = ifelse(disturbance %in% c("storm", "snow"), a1, NA_real_)) %>%
       # Calculate death probability depending on the model
-      mutate(pd = case_when(disturbance == "storm" ~ 1 - (1 - plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c))^time, 
+      mutate(pd = case_when(disturbance %in% c("storm", "snow") ~ 1 - (1 - plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c))^time, 
                             TRUE ~ 1 - (1 - plogis(a0 + b*I*dbh.scaled^c))^time)) %>%
       # Average probabilities by treecode
       group_by(treecode) %>%
@@ -450,13 +448,13 @@ predict_jags_meanParam <- function(jags.model, data_jags, data_model){
       left_join(extract_param_per_species(jags.model[[i]], data_jags[[i]]), 
                 by = c("species", "iter", "country")) %>%
       # Add missing parameter
-      mutate(a1 = ifelse(disturbance == "storm", a1, NA_real_)) %>%
+      mutate(a1 = ifelse(disturbance %in% c("storm", "snow"), a1, NA_real_)) %>%
       # Compute mean parameter and intensity
       group_by(treecode, plotcode, disturbance, logratio.scaled, dbh.scaled, time) %>%
       summarize(a0 = mean(a0), a1 = mean(a1), b = mean(b), c = mean(c), I = mean(I)) %>% 
       ungroup() %>%
       # Calculate death probability depending on the model
-      mutate(p = case_when(disturbance == "storm" ~ 1 - (1 - plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c))^time, 
+      mutate(p = case_when(disturbance %in% c("storm", "snow") ~ 1 - (1 - plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c))^time, 
                            TRUE ~ 1 - (1 - plogis(a0 + b*I*dbh.scaled^c))^time)) %>%
       dplyr::select(treecode, p)
     
@@ -495,7 +493,7 @@ get_species_list <- function(data_model){
 #' @param logratio.ref value of the ratio dbh/dqm for which to predict values
 #' @param I.ref disturbance intensity for which to predict values
 get_disturbance_sensivity <- function(jags.model, data_jags, data_model, 
-                                      dbh.ref = 300, logratio.ref = 0, I.ref = 0.7){
+                                      dbh.ref = 300, logratio.ref = 0, I.ref = 0.5){
   
   # Initialize output
   out <- list()
@@ -517,10 +515,18 @@ get_disturbance_sensivity <- function(jags.model, data_jags, data_model,
     
     # Parameter per species
     param_per_species.i <- extract_param_per_species(jags.model[[i]], data_jags[[i]])
-    if(disturbances.in[[i]] != "storm") param_per_species.i$a1 = NA_real_
+    if(!(disturbances.in[[i]] %in% c("storm", "snow"))) param_per_species.i$a1 = NA_real_
     param_per_species.i <- param_per_species.i %>%
+      left_join((data_model[[i]] %>%
+                   group_by(species, country) %>%
+                   summarize(weight = n())), 
+                by = c("country", "species")) %>%
+      mutate(weight = ifelse(is.na(weight), 1, weight)) %>%
       group_by(species, iter) %>%
-      summarise(a0 = mean(a0), a1 = mean(a1), b = mean(b), c = mean(c))
+      summarise(a0 = sum(a0*weight)/sum(weight), 
+                a1 = sum(a1*weight)/sum(weight), 
+                b = sum(b*weight)/sum(weight), 
+                c = sum(c*weight)/sum(weight))
     
     # Format data 
     data.i <- expand.grid(species = data_jags[[i]]$species.table$species,
@@ -533,7 +539,7 @@ get_disturbance_sensivity <- function(jags.model, data_jags, data_model,
       # Add parameters per species
       left_join(param_per_species.i, by = c("species", "iter")) %>%
       # Compute probabilities
-      mutate(pd = case_when(disturbance == "storm" ~ plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c), 
+      mutate(pd = case_when(disturbance %in% c("storm", "snow") ~ plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c), 
                             TRUE ~ plogis(a0 + b*I*dbh.scaled^c)), 
              pd = 1 - (1 - pd)^5) %>%
       # Average per species
@@ -550,20 +556,25 @@ get_disturbance_sensivity <- function(jags.model, data_jags, data_model,
   return(out)
 }
 
-
-
-#' Create a latex table with the model results
+#' Create a latex table with the results  of the trait models
 #' @param traits dataframe containing trait values per species
 #' @param traits_TRY dataframe containing trait values from TRY per species
 #' @param disturbance_sensivity dataframe containing the sensitivity to each disturbance
+#' @param disturbance_sensivity_bis dataframe containing the sensitivity to biotic and snow
+#' @param species Table containing species information
+#' @param group.in character indicating which species to include ("all", "conifer" or "broadleaf")
 #' @param file.in Name of the file to save
-export_trait_result_latex <- function(traits, traits_TRY, disturbance_sensitivity, file.in){
+export_trait_result_latex <- function(traits, traits_TRY, disturbance_sensitivity, disturbance_sensitivity_bis, 
+                                      species, group.in = "all", file.in){
   
   # Initiate tables for disturbances
   tables <- list()
   
+  # merge disturbance sensitivity 
+  disturbance_sensitivity.in <- c(disturbance_sensitivity, disturbance_sensitivity_bis[c("biotic", "snow")])
+  
   # Identify the disturbances
-  disturbances.in <- names(disturbance_sensitivity)
+  disturbances.in <- names(disturbance_sensitivity.in)
   
   # Rearrange traits table
   traits.in <- traits %>%
@@ -585,6 +596,17 @@ export_trait_result_latex <- function(traits, traits_TRY, disturbance_sensitivit
       "Stomata cond." = "TRY_stomata.conductance_millimolm-2s-1"
     )
   
+  # Identify the species to select depending on the group 
+  species.to.select <- (species %>%
+                          mutate(group.in = group.in) %>%
+                          mutate(keep = case_when(group.in == "conifer" ~ ifelse(group == "Gymnosperms", 1, 0), 
+                                                  group.in == "broadleaf" ~ ifelse(group == "Angiosperms", 1, 0), 
+                                                  group.in == "all" ~ 1)) %>%
+                          filter(keep == 1))$species
+  
+  # And filter trait table
+  traits.in <- traits.in %>% filter(species %in% species.to.select)
+  
   # Center and scale the trait values
   traits.in <- scale_data_model(traits.in, var = colnames(traits.in)[c(2:dim(traits.in)[2])])
   
@@ -598,20 +620,25 @@ export_trait_result_latex <- function(traits, traits_TRY, disturbance_sensitivit
     for(j in 1:length(disturbances.in)){
       # Create a table with trait i and sensitivity to disturbance j
       data.ij <- traits.i %>%
-        left_join((disturbance_sensitivity[[j]] %>%
+        left_join((disturbance_sensitivity.in[[j]] %>%
                      mutate(sensitivity.logit = log(p/(1 - p)), 
                             w = 1/(p_975 - p_025))), 
                   by = "species") %>%
         drop_na()
-      # Fit a model
-      model.ij <- lm(sensitivity.logit ~ trait, weights = w, data = data.ij)
-      # Results
-      table.ij <- data.frame(
-        trait = trait.i, 
-        Est. = as.character(round(summary(model.ij)$coefficients[2, 1], digits = 1)), 
-        Fval. = as.character(round(anova(model.ij)[1, 4], digits = 1)), 
-        p = scales::pvalue(anova(model.ij)[1, 5], accuracy = 0.01)
-      )
+      # Only perform a test if there is enough data
+      if(dim(data.ij)[1] > 2){
+        # Fit a model
+        model.ij <- lm(sensitivity.logit ~ trait, weights = w, data = data.ij)
+        # Results
+        table.ij <- data.frame(
+          trait = trait.i, 
+          Est. = as.character(round(summary(model.ij)$coefficients[2, 1], digits = 1)), 
+          Fval. = as.character(round(anova(model.ij)[1, 4], digits = 1)), 
+          p = scales::pvalue(anova(model.ij)[1, 5], accuracy = 0.01)
+        )
+      }else{table.ij <- data.frame(trait = trait.i, Est. = "", Fval. = "", p = "")}
+      
+      
       # Add to the list containing the final results
       if(i == 1) eval(parse(text = paste0("tables$", disturbances.in[j], " <- table.ij ")))
       else eval(parse(text = paste0("tables$", disturbances.in[j], " <- rbind.data.frame(tables$", disturbances.in[j], ", table.ij)")))
@@ -638,13 +665,134 @@ export_trait_result_latex <- function(traits, traits_TRY, disturbance_sensitivit
   
   # create a tex file
   print(xtable(out, type = "latex", 
-               caption = "Statistics of the logistic models predicting the effect of centered 
-               and scaled trait values to disturbance sensitivity", 
+               caption = paste0("Statistics of the logistic models predicting the effect of centered 
+               and scaled trait values to disturbance sensitivity for ", group.in, " species"), 
                label = "table_traits"), 
         include.rownames=FALSE, hline.after = c(1, 2, dim(out)[1]), 
         include.colnames = FALSE, caption.placement = "top", file = file.in)
   
   #return output
+  return(file.in)
+}
+
+
+
+
+#' Extract statistics of the models predicting the sensitivity to all disturbances vs traits
+#' @param traits dataset containing trait values per species
+#' @param traits_TRY dataset containing trait values per species from TRY
+#' @param disturbance_sensitivity dataset containing disturbance sensitivity per species
+#' @param disturbance_sensitivity_bis list of dataset containing disturbance sensitivity to snow and biotic
+#' @param file.in Name of the file to save (including path)
+export_trait_allDist_latex <- function(traits, traits_TRY, disturbance_sensitivity, 
+                                       disturbance_sensitivity_bis, file.in){
+  
+  ## - Assemble the two disturbance sensitivity files
+  disturbance_sensitivity.in <- c(disturbance_sensitivity, disturbance_sensitivity_bis[c("snow", "biotic")])
+  
+  ## - Loop on all disturbance types to assemble data sets
+  for(i in 1:length(names(disturbance_sensitivity.in))){
+    data.in.i <- as.data.frame(disturbance_sensitivity.in[[i]]) %>%
+      mutate(disturbance = names(disturbance_sensitivity.in)[i])
+    if(i == 1) data.in <- data.in.i
+    if(i > 1) data.in <- rbind(data.in, data.in.i)
+  }
+  
+  ## - Rearrange traits table
+  traits.in <- traits %>%
+    left_join(traits_TRY, by = "species") %>%
+    dplyr::select(
+      "species", 
+      "Wood density" = "wood.density_g.cm3", 
+      "Shade tolerance" = "shade.tolerance", 
+      "Root mass fraction" = "Root_mass_fraction", 
+      "Bark thickness" = "bark.thickness_mm", 
+      "H to dbh ratio" = "height.dbh.ratio", 
+      "Leaf CN ratio" = "TRY_leaf.CN.ratio_g.cm3", 
+      "Leaf NP ratio" = "TRY_leaf.NP.ratio_g.cm3", 
+      "Leaf Nmass" = "TRY_leaf.N.mass_mg.g", 
+      "Leaf Pmass" = "TRY_leaf.P.mass_mg.g", 
+      "SLA" = "TRY_leaf.sla_mm2mg-1", 
+      "Leaf thickness" = "TRY_leaf.thickness_mm", 
+      "Lifespan" = "TRY_plant.lifespan_year", 
+      "Stomata conductance" = "TRY_stomata.conductance_millimolm-2s-1"
+    )
+  
+  # Center and scale the trait values
+  traits.in <- scale_data_model(traits.in, var = colnames(traits.in)[c(2:dim(traits.in)[2])])
+  
+  # Initialize table with statistics
+  table.out <- data.frame(trait = "", Est. = "Est.", 
+                          Chisq. = "Chisq.", p = "pval.")
+  
+  # Loop on all traits
+  for(trait.i in colnames(traits.in)[which(colnames(traits.in) != "species")]){
+    
+    # Format data for the model
+    data.i <- data.in %>%
+      left_join((traits.in %>% dplyr::select("species", "trait" = trait.i)), 
+                by = "species") %>%
+      # Logit transformation and weight
+      mutate(sensitivity.logit = log(p/(1 - p)), 
+             w = 1/(p_975 - p_025)) %>%
+      # remove NA
+      drop_na()
+    
+    # Fit a model
+    model.i <- lmer(sensitivity.logit ~ trait + (1|species), weights = w, data = data.i)
+    # Results
+    table.i <- data.frame(
+      trait = trait.i, 
+      Est. = as.character(round(summary(model.i)$coefficients[2, 1], digits = 2)), 
+      Chisq. = as.character(round(Anova(model.i)[1, 1], digits = 2)), 
+      p = scales::pvalue(Anova(model.i)[1, 3], accuracy = 0.01)
+    )
+    # Add to the final output
+    table.out <- rbind(table.out, table.i)
+  }
+  
+  # Remove column names
+  colnames(table.out) <- NULL
+  
+  # Create output dir if necessary
+  create_dir_if_needed(file.in)
+  
+  # create a tex file
+  print(xtable(table.out, type = "latex", 
+               caption = "Statistics of the logistic models predicting the effect of centered 
+               and scaled trait values to the sensitivity to all disturbance types.", 
+               label = "table_traits_allDist"), 
+        include.rownames=FALSE, hline.after = c(1, dim(table.out)[1]), 
+        include.colnames = FALSE, caption.placement = "top", file = file.in)
+  
+  #return output
+  return(file.in)
+}
+
+
+#' Export jags model as R object
+#' @param jags.model.in Jags model to save
+#' @param data_jags.in dajagas object to save
+#' @param file.in name of the file to save, including path
+export_jags <- function(jags.model.in, data_jags.in, file.in){
+  
+  # Create directory if needed
+  create_dir_if_needed(file.in)
+  
+  # Loop on all disturbances to remove the data in data_jags (and only keep correspondance tables)
+  corresp.tables <- list()
+  for(i in 1:length(names(data_jags.in))){
+    corresp.table.i <- data_jags.in[[i]][-1]
+    eval(parse(text = paste0("corresp.tables$", names(data_jags.in)[i], " <- corresp.table.i")))
+  }
+  
+  # Rename jags object
+  jags.list <- jags.model.in
+  
+  # Save the two objects
+  save(corresp.tables, jags.list, file = file.in)
+  
+  # Return the name of the file
   return(file.in)
 }
 
@@ -780,3 +928,90 @@ compile_traits_TRY <- function(TRY_file, species.in){
   return(traits.TRY)
 }
 
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+## Extract general information ---------
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
+#' Export a latex table with statistics about disturbance and number of trees and plots
+#' @param FUNDIV_tree Tree table formatted for FUNDIV
+#' @param FUNDIV_plot Plot table formatted for FUNDIV
+#' @param file.in Name of the file to save
+export_table_disturbance_stats <- function(FUNDIV_tree, FUNDIV_plot, file.in){
+  
+  # Initialize final table
+  table.out <- data.frame(col1 = "")
+  
+  # Table with the information on all countries 
+  table.allcountries <- FUNDIV_tree %>%
+    left_join((FUNDIV_plot %>% dplyr::select(plotcode, disturbance.nature)), 
+              by = "plotcode") %>%
+    filter(disturbance.nature %in% c("storm", "fire", "other", "snow", "biotic")) %>%
+    filter(treestatus != 1) %>%
+    mutate(dead = ifelse(treestatus == 2, 0, 1)) %>%
+    group_by(country, plotcode, disturbance.nature) %>%
+    summarize(n.trees = n(), 
+              death.rate = sum(dead, na.rm = TRUE)/n(),
+              ba.plot = sum(ba_ha1, na.rm = TRUE)) %>%
+    ungroup() %>%
+    group_by(country, disturbance.nature) %>%
+    summarize(n.plots = n(), 
+              n.trees.per.plot = mean(n.trees, na.rm = TRUE), 
+              n.trees = sum(n.trees, na.rm = TRUE), 
+              death.rate = mean(death.rate, na.rm = TRUE), 
+              basal.area = mean(ba.plot)) %>%
+    gather(key = "variable", value = "value", colnames(.)[c(3:dim(.)[2])]) %>%
+    mutate(value = ifelse(variable == "death.rate", 
+                          as.character(round(value, digits = 2)), 
+                          as.character(round(value, digits = 0)))) %>%
+    mutate(variable = gsub("\\.", "\\ ", variable)) %>%
+    spread(key = "disturbance.nature", value = "value") %>%
+    mutate(across(everything(), ~replace_na(.x, "")))
+  
+  # Finish to format the first line of the reference table
+  for(i in 3:dim(table.allcountries)[2]){
+    eval(parse(text = paste0("table.out$col", (i-1), " <- colnames(table.allcountries)[", i, "]")))
+  }
+  
+  # Create one table per country, and add it to the final table
+  for(j in 1:length(unique(table.allcountries$country))){
+    # First line of the table for country j
+    head.table.j <- as.data.frame(
+      matrix(nrow = 1, ncol = dim(table.out)[2], data = "", 
+             dimnames = list(c(""), colnames(table.out)))) %>%
+      mutate(col1 = toupper(unique(table.allcountries$country)[j]))
+    # Add an empty line on top to separate countries
+    if(j > 1) head.table.j <- rbind.data.frame(
+      matrix(nrow = 1, ncol = dim(table.out)[2], data = "", 
+             dimnames = list(c(""), colnames(table.out))),
+      head.table.j)
+    # Table with values for country j
+    table.country.j <- table.allcountries %>%
+      filter(country == unique(table.allcountries$country)[j]) %>%
+      ungroup() %>%
+      dplyr::select(-country)
+    colnames(table.country.j) <- colnames(head.table.j)
+    # Add to the final table
+    table.out <- rbind.data.frame(table.out, head.table.j, table.country.j)
+  }
+  
+  # Remove column names
+  colnames(table.out) <- NULL
+  
+  # Create output dir if necessary
+  create_dir_if_needed(file.in)
+  
+  # create a tex file
+  print(xtable(table.out, type = "latex", label = "dist_stat_table",
+               caption = "Mean number of trees, plots, number of trees per plot, 
+               basal area and death rate per country and per disturbance type"), 
+        include.rownames=FALSE, hline.after = c(0, 1, dim(table.out)[1]), 
+        include.colnames = FALSE, caption.placement = "top", file = file.in)
+  
+  #return output
+  return(file.in)
+}

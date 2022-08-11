@@ -12,8 +12,6 @@
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-
-
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## 1. Generic functions ------------
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -88,12 +86,241 @@ plot_harvest_and_death_rate <- function(data_model, file.in){
           legend.title = element_blank())
   
   # - Save the plot
-  ggsave(file.in, plot.out, width = 25, height = 20, units = "cm", dpi = 600)
+  ggsave(file.in, plot.out, width = 25, height = 20, units = "cm", dpi = 600, bg = "white")
   
   # return the name of all the plots made
   return(file.in)
   
 }
+
+#' Plot the relation between disturbance severity (observed) and intensity (estimated)
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param FUNDIV_plot Plot table formatted for FUNDIV
+#' @param file.in Path and file where to save the plot
+map_disturbance_intensity <- function(jags.model, data_jags, FUNDIV_plot, file.in){
+  
+  ## - Create directories if needed
+  create_dir_if_needed(file.in)
+  
+  ## - Identify disturbances 
+  disturbances.in <- names(jags.model)
+  
+  # Initialize output
+  data.plot <- list()
+  
+  ## - Loop on all disturbances
+  for(i in 1:length(disturbances.in)){
+    # Create spatial object with data for diturbance i
+    data.i <- extract_intensity_per_plotcode(jags.model[[i]], data_jags[[i]]) %>%
+      gather(key = "iter", value = "I", colnames(.)[which(colnames(.) != "plotcode")]) %>%
+      group_by(plotcode) %>%
+      summarize(intensity = mean(I)) %>%
+      mutate(disturbance = disturbances.in[i]) %>%
+      left_join(FUNDIV_plot, by = "plotcode") %>%
+      dplyr::select("plotcode", "latitude", "longitude", 
+                    "disturbance", "intensity") %>% 
+      spread(key = "disturbance", value = "intensity") %>%
+      st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant")
+    
+    # Add to the output list
+    eval(parse(text = paste0("data.plot$", disturbances.in[i], " <- data.i")))
+  }
+  
+  ## - First plot for the countries only
+  plot.out <- ne_countries(scale = "medium", returnclass = "sf") %>%
+    ggplot(aes(geometry = geometry)) +
+    geom_sf(fill = "#343A40", color = "lightgray", show.legend = F) + 
+    annotation_scale(location = "br", width_hint = 0.2) +
+    geom_rect(aes(xmin = -9.7, xmax = 9.7, ymin = 36, ymax = 51.5), 
+              color = "#BA181B", fill = NA) +
+    geom_rect(aes(xmin = 20, xmax = 31.5, ymin = 59.5, ymax = 70.5), 
+              color = "#BA181B", fill = NA)   + 
+    # Add other disturbance
+    geom_sf(data = data.plot$other, shape = 16, aes(color = other), 
+            show.legend = "point", size = 1) +
+    scale_color_gradient2(low = "white", mid = "#90A955", high = "black", midpoint = 0.3)  +
+    new_scale_colour() +
+    # Add storm disturbance
+    geom_sf(data = data.plot$storm, shape = 16, aes(color = storm), 
+            show.legend = "point", size = 1) +
+    scale_color_gradient2(low = "white", mid = "#4361EE", high = "black", midpoint = 0.3)  +
+    new_scale_colour() +
+    # Add fire disturbance
+    geom_sf(data = data.plot$fire, shape = 16, aes(color = fire), 
+            show.legend = "point", size = 1) +
+    scale_color_gradient2(low = "white", mid = "#F77F00", high = "black", midpoint = 0.3) +
+    # Finish formatting
+    coord_sf(xlim = c(-10, 32), ylim = c(36, 71)) +
+    theme(panel.background = element_rect(color = 'black', fill = 'white'), 
+          panel.grid = element_blank(),
+          axis.text = element_text(size = 20),
+          legend.text = element_text(size = 16),
+          legend.title = element_text(size = 18),
+          legend.box = "horizontal",
+          legend.background = element_blank(),
+          legend.box.background = element_rect(colour = "black"), 
+          legend.position = c(0.2, 0.9))
+  
+  
+  
+  ## - save the plot
+  ggsave(file.in, plot.out, width = 26, height = 33, units = "cm", dpi = 600, bg = "white")
+  return(file.in)
+  
+}
+
+
+
+#' Plot the relation between disturbance severity (observed) and intensity (estimated)
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param FUNDIV_plot Plot table formatted for FUNDIV
+#' @param file.in Path and file where to save the plot
+map_disturbance_intensity_bis <- function(jags.model, data_jags, FUNDIV_plot, file.in){
+  
+  ## - Create directories if needed
+  create_dir_if_needed(file.in)
+  
+  ## - Identify disturbances 
+  disturbances.in <- names(jags.model)
+  
+  # Initialize output
+  data.plot <- list()
+  
+  ## - Loop on all disturbances
+  for(i in 1:length(disturbances.in)){
+    # Create spatial object with data for diturbance i
+    data.i <- extract_intensity_per_plotcode(jags.model[[i]], data_jags[[i]]) %>%
+      gather(key = "iter", value = "I", colnames(.)[which(colnames(.) != "plotcode")]) %>%
+      group_by(plotcode) %>%
+      summarize(intensity = mean(I)) %>%
+      mutate(disturbance = disturbances.in[i]) %>%
+      left_join(FUNDIV_plot, by = "plotcode") %>%
+      dplyr::select("plotcode", "latitude", "longitude", 
+                    "disturbance", "intensity") %>% 
+      spread(key = "disturbance", value = "intensity") %>%
+      st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant")
+    
+    # Add to the output list
+    eval(parse(text = paste0("data.plot$", disturbances.in[i], " <- data.i")))
+  }
+  
+  ## - First plot for the countries only
+  plot.out <- ne_countries(scale = "medium", returnclass = "sf") %>%
+    mutate(keep = ifelse(sovereignt %in% c("France", "Spain", "Finland"), "yes", "no")) %>%
+    ggplot(aes(geometry = geometry)) +
+    geom_sf(aes(fill = keep), color = "white", show.legend = F) + 
+    scale_fill_manual(values = c("#8D99AE", "#343A40")) +
+    new_scale_colour() +
+    # Add other disturbance
+    geom_sf(data = data.plot$other, shape = 16, aes(color = other), 
+            show.legend = "point", size = 1) +
+    scale_color_gradient2(low = "white", mid = "#5F0F40", high = "black", midpoint = 0.3)  +
+    new_scale_colour() +
+    # Add storm disturbance
+    geom_sf(data = data.plot$storm, shape = 16, aes(color = storm), 
+            show.legend = "point", size = 1) +
+    scale_color_gradient2(low = "white", mid = "#4361EE", high = "black", midpoint = 0.3)  +
+    new_scale_colour() +
+    # Add biotic disturbance
+    geom_sf(data = data.plot$biotic, shape = 16, aes(color = biotic), 
+            show.legend = "point", size = 1) +
+    scale_color_gradient2(low = "white", mid = "#90A955", high = "black", midpoint = 0.3)  +
+    new_scale_colour() +
+    # Add snow disturbance
+    geom_sf(data = data.plot$snow, shape = 16, aes(color = snow), 
+            show.legend = "point", size = 1) +
+    scale_color_gradient2(low = "white", mid = "#006D77", high = "black", midpoint = 0.3)  +
+    new_scale_colour() +
+    # Add fire disturbance
+    geom_sf(data = data.plot$fire, shape = 16, aes(color = fire), 
+            show.legend = "point", size = 1) +
+    scale_color_gradient2(low = "white", mid = "#F77F00", high = "black", midpoint = 0.3) +
+    # Finish formatting
+    coord_sf(xlim = c(-10, 32), ylim = c(36, 71)) +
+    guides(fill = FALSE) +
+    theme(panel.background = element_rect(color = 'black', fill = 'white'), 
+          panel.grid = element_blank(),
+          axis.text = element_text(size = 20),
+          legend.text = element_text(size = 16),
+          legend.title = element_text(size = 18),
+          legend.box = "horizontal",
+          legend.background = element_blank(),
+          legend.box.background = element_rect(colour = "black"), 
+          legend.position = c(0.3, 0.9))
+  
+  
+  
+  ## - save the plot
+  ggsave(file.in, plot.out, width = 33.8, height = 42.9, units = "cm", dpi = 600, bg = "white")
+  return(file.in)
+  
+}
+
+
+#' Plot the relation between disturbance severity (observed) and intensity (estimated)
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param FUNDIV_plot Plot table formatted for FUNDIV
+#' @param file.in Path and file where to save the plot
+map_disturbance_intensity_ter <- function(jags.model, data_jags, FUNDIV_plot, file.in){
+  
+  ## - Create directories if needed
+  create_dir_if_needed(file.in)
+  
+  ## - Identify disturbances 
+  disturbances.in <- names(jags.model)
+  
+  # Initialize output
+  data.plot <- list()
+  
+  ## - Loop on all disturbances
+  for(i in 1:length(disturbances.in)){
+    # Create spatial object with data for diturbance i
+    data.i <- extract_intensity_per_plotcode(jags.model[[i]], data_jags[[i]]) %>%
+      gather(key = "iter", value = "I", colnames(.)[which(colnames(.) != "plotcode")]) %>%
+      group_by(plotcode) %>%
+      summarize(intensity = mean(I)) %>%
+      mutate(disturbance = paste0(toupper(substr(disturbances.in[i], 1, 1)), 
+                                  substr(disturbances.in[i], 2, nchar(disturbances.in[i])))) %>%
+      mutate(disturbance = factor(disturbance)) %>%
+      left_join(FUNDIV_plot, by = "plotcode") %>%
+      dplyr::select("plotcode", "latitude", "longitude", "intensity", "disturbance") %>% 
+      st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant")
+    
+    # Add to the output dataset
+    if(i == 1) data <- data.i
+    else data <- rbind(data, data.i)
+  }
+  
+  ## - Final plot
+  plot.out <- ne_countries(scale = "medium", returnclass = "sf") %>%
+    mutate(keep = ifelse(sovereignt %in% c("France", "Spain", "Finland"), "yes", "no")) %>%
+    ggplot(aes(geometry = geometry)) +
+    geom_sf(aes(fill = keep), color = "white", show.legend = F) + 
+    scale_fill_manual(values = c("#8D99AE", "#343A40")) +
+    annotation_scale(location = "br", width_hint = 0.2) + 
+    geom_sf(data = data, shape = 16, aes(color = intensity), 
+            show.legend = "point", size = 0.1) +
+    scale_color_gradient2(low = "#EDF2F4", mid = "#EF233C", high = "#D90429", midpoint = 0.4)  +
+    facet_wrap(~ disturbance) +
+    guides(fill = FALSE) +
+    theme(panel.background = element_rect(color = 'black', fill = 'white'), 
+          panel.grid = element_blank(), 
+          strip.background = element_blank(), 
+          strip.text = element_text(size = 15)) + 
+    coord_sf(xlim = c(-10, 32), ylim = c(36, 71))
+  
+  ## - save the plot
+  if(length(disturbances.in) <= 3) ggsave(file.in, plot.out, width = 25, height = 12.5, units = "cm", dpi = 600, bg = "white")
+  if(length(disturbances.in) > 3) ggsave(file.in, (plot.out + theme(legend.position = c(0.9, 0.2),
+                                                                    legend.justification = c(0.9, 0.2))),
+                                         width = 20, height = 18, units = "cm", dpi = 600, bg = "white")
+  return(file.in)
+  
+}
+
 
 
 #' Function to plot trends in disturbance occurence and severity over time
@@ -116,7 +343,11 @@ plot_disturbance_trends <- function(FUNDIV_plot, FUNDIV_tree, file.in){
   countries.in <- unique(FUNDIV_plot$country)
   
   # Type of disturbances
-  disturbances.in <- c(unique(subset(FUNDIV_plot, disturbance.nature != "none")$disturbance.nature), "all")
+  disturbances.in <- unique(subset(FUNDIV_plot, disturbance.nature != "none")$disturbance.nature)
+  # Add a category for all disturbances (only if all disturbances are included)
+  if("storm" %in% disturbances.in & "fire" %in% disturbances.in){
+    disturbances.in <- c(disturbances.in, "all")
+  }
   
   # Create a vector of colors for plotting
   color.df <- data.frame(disturbance = c("biotic", "fire", "other", "snow", "storm", "all"), 
@@ -271,7 +502,7 @@ plot_disturbance_trends <- function(FUNDIV_plot, FUNDIV_tree, file.in){
   plot.out <- plot_grid(plot.proportion, plot.severity, nrow = 1, labels = c("(a)", "(b)"), align = "h")
   
   # Save the plot
-  ggsave(file.in, plot.out, width = 25, height = 20, units = "cm", dpi = 600)
+  ggsave(file.in, plot.out, width = 25, height = 20, units = "cm", dpi = 600, bg = "white")
   
   # return the name of the saved plot
   return(file.in)
@@ -354,7 +585,7 @@ plot_convergence <- function(jags.model, data_jags, dir.in){
       ggtitle(species.in[j])
     
     ## - Save the plot
-    ggsave(file.in.j, plot.j, width = 17, height = 12, units = "cm", dpi = 600)
+    ggsave(file.in.j, plot.j, width = 17, height = 12, units = "cm", dpi = 600, bg = "white")
     
   }
   
@@ -410,11 +641,13 @@ plot_intensity_distribution <- function(jags.model, data_jags, file.in){
   
   
   # - Save the three plots
-  ggsave(file.in, plot.out, width = 20, height = 7, units = "cm", dpi = 600)
+  ggsave(file.in, plot.out, width = 20, height = 7, units = "cm", dpi = 600, bg = "white")
   
   # return the name of all the plots made
   return(file.in)
 }
+
+
 
 
 #' Plot death probability predicted by the reference model
@@ -481,8 +714,8 @@ plot_prediction_all <- function(jags.model, data_jags, data_model, file.in){
       filter(dbh < 750)
     
     # Calculate death probability, depending on the model
-    if(disturbances.in[i] == "storm") data.i <- mutate(data.i, pd = plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c))
-    if(disturbances.in[i] != "storm") data.i <- mutate(data.i, pd = plogis(a0 + b*I*dbh.scaled^c))
+    if(disturbances.in[i] %in% c("storm", "snow")) data.i <- mutate(data.i, pd = plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c))
+    if(!(disturbances.in[i] %in% c("storm", "snow"))) data.i <- mutate(data.i, pd = plogis(a0 + b*I*dbh.scaled^c))
     
     # Only keep columns of interest
     data.i <- data.i %>% 
@@ -509,7 +742,7 @@ plot_prediction_all <- function(jags.model, data_jags, data_model, file.in){
     xlab("dbh (mm)")
   
   # - Save the three plots
-  ggsave(file.in, plot.out, width = 25, height = 20, units = "cm", dpi = 600)
+  ggsave(file.in, plot.out, width = 25, height = 20, units = "cm", dpi = 600, bg = "white")
   
   # return the name of all the plots made
   return(file.in)
@@ -590,8 +823,8 @@ plot_prediction <- function(jags.model, data_jags, data_model, dir.in){
       filter(dbh > 150)
     
     # Calculate death probability, depending on the model
-    if(disturbances.in[i] == "storm") data.i <- mutate(data.i, pd = plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c))
-    if(disturbances.in[i] != "storm") data.i <- mutate(data.i, pd = plogis(a0 + b*I*dbh.scaled^c))
+    if(disturbances.in[i] %in% c("storm", "snow")) data.i <- mutate(data.i, pd = plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c))
+    if(!(disturbances.in[i] %in% c("storm", "snow"))) data.i <- mutate(data.i, pd = plogis(a0 + b*I*dbh.scaled^c))
     
     # - Pre-format the data before plotting
     plot.out.i <- data.i %>% 
@@ -611,7 +844,7 @@ plot_prediction <- function(jags.model, data_jags, data_model, dir.in){
       xlab("dbh (mm)")
     
     # - Save the three plots
-    ggsave(file.in.i, plot.out.i, width = 25, height = 20, units = "cm", dpi = 600)
+    ggsave(file.in.i, plot.out.i, width = 25, height = 20, units = "cm", dpi = 600, bg = "white")
   }
   
   # return the name of all the plots made
@@ -663,7 +896,7 @@ plot_prediction2 <- function(jags.model, data_jags, data_model, file.in){
       # Compute mean parameter value 
       dplyr::select(species, Parameter.true, iter, disturbance, value) %>%
       spread(key = "Parameter.true", value = "value") %>%
-      mutate(a1 = ifelse(disturbance == "storm", a1, NA_real_))
+      mutate(a1 = ifelse(disturbance %in% c("storm", "snow"), a1, NA_real_))
     
     
     # Model to scale logratio
@@ -696,7 +929,7 @@ plot_prediction2 <- function(jags.model, data_jags, data_model, file.in){
       # Add parameter per species
       left_join(param.per.species.i, by = c("species", "iter")) %>%
       # Compute probabilities
-      mutate(pd = ifelse(disturbance == "storm", 
+      mutate(pd = ifelse(disturbance %in% c("storm", "snow"), 
                          plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c), 
                          plogis(a0 + b*I*dbh.scaled^c))) %>%
       # Average per species and dbh
@@ -729,7 +962,7 @@ plot_prediction2 <- function(jags.model, data_jags, data_model, file.in){
     xlab("dbh (mm)")
   
   # - Save the plot
-  ggsave(file.in, plot.out, width = 25, height = 20, units = "cm", dpi = 600)
+  ggsave(file.in, plot.out, width = 25, height = 20, units = "cm", dpi = 600, bg = "white")
   
   # return the name of all the plots made
   return(file.in)
@@ -799,7 +1032,7 @@ plot_predicted_vs_observed <- function(jags.model, data_jags, data_model,
           legend.key = element_blank())
   
   # - Save the plot
-  ggsave(file.in, plot.out, width = 25, height = 20, units = "cm", dpi = 600)
+  ggsave(file.in, plot.out, width = 25, height = 20, units = "cm", dpi = 600, bg = "white")
   
   # return the name of all the plots made
   return(file.in)
@@ -822,6 +1055,9 @@ plot_param_per_species <- function(jags.model, data_jags, data_model,
   
   # Initialize output
   out <- list()
+  
+  # Create directory if needed
+  create_dir_if_needed(file.in)
   
   # Identify disturbances 
   disturbances.in <- names(jags.model)
@@ -849,7 +1085,7 @@ plot_param_per_species <- function(jags.model, data_jags, data_model,
     
     # Parameter per species
     param_per_species.i <- extract_param_per_species(jags.model[[i]], data_jags[[i]])
-    if(disturbances.in[[i]] != "storm") param_per_species.i$a1 = NA_real_
+    if(!(disturbances.in[i] %in% c("storm", "snow"))) param_per_species.i$a1 = NA_real_
     param_per_species.i <- param_per_species.i %>%
       group_by(species, iter) %>%
       summarise(a0 = mean(a0), a1 = mean(a1), b = mean(b), c = mean(c))
@@ -865,7 +1101,7 @@ plot_param_per_species <- function(jags.model, data_jags, data_model,
       # Add parameters per species
       left_join(param_per_species.i, by = c("species", "iter")) %>%
       # Compute probabilities
-      mutate(pd = case_when(disturbance == "storm" ~ plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c), 
+      mutate(pd = case_when(disturbance %in% c("storm", "snow") ~ plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c), 
                             TRUE ~ plogis(a0 + b*I*dbh.scaled^c))) %>%
       # Average per species
       group_by(species) %>%
@@ -919,7 +1155,7 @@ plot_param_per_species <- function(jags.model, data_jags, data_model,
                         labels = paste0("(", letters[c(1:length(disturbances.in))], ")"))
   
   ## - save the plot
-  ggsave(file.in, plot.out, width = 18, height = 30, units = "cm", dpi = 600)
+  ggsave(file.in, plot.out, width = 18, height = 30, units = "cm", dpi = 600, bg = "white")
   return(file.in)
 }
 
@@ -1036,11 +1272,89 @@ plot_param_per_species_stock <- function(jags.model, data_jags, data_model,
                         labels = paste0("(", letters[c(1:length(disturbances.in))], ")"))
   
   ## - save the plot
-  ggsave(file.in, plot.out, width = 18, height = 30, units = "cm", dpi = 600)
+  ggsave(file.in, plot.out, width = 18, height = 30, units = "cm", dpi = 600, bg = "white")
   return(file.in)
 }
 
 
+#' Plot the rhat of the parameters of a jags model
+#' @param jags.model list of rjags object, each element being associated to a disturbance
+#' @param file.in Name of the file to save, path included
+plot_rhat <- function(jags.model, file.in){
+  
+  # Create directory if needed
+  create_dir_if_needed(file.in)
+  
+  # Name of the disturbances
+  disturbances.in <- names(jags.model)
+  
+  # Colors for plotting
+  colors.in <- (data.frame(disturbance = disturbances.in) %>%
+                  left_join(data.frame(disturbance = c("biotic", "fire", "other", "snow", "storm"), 
+                                       color = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")), 
+                            by = "disturbance"))$color
+  
+  # Loop on all disturbances
+  for(i in 1:length(disturbances.in)){
+    
+    print(paste0("Calculating rhat for parameters related to ", disturbances.in[i], " disturbance"))
+    
+    # Convert jags model for distrubance i in a mcmcm object 
+    mcmc.i <- ggs(as.mcmc(jags.model[[i]]))
+    
+    # Initialize dataset for disturbance i
+    data.i <- mcmc.i %>%
+      mutate(Param.cat = gsub("\\[.+\\]", "", Parameter)) %>%
+      filter(Param.cat %in% c("a0", "a1", "b", "c", "I")) %>%
+      mutate(Param.cat = factor(Param.cat, levels = c("a0", "a1", "b", "c", "I")), 
+             disturbance = disturbances.in[i], 
+             rhat = NA_real_) %>%
+      dplyr::select(Param.cat, Parameter, disturbance, rhat) %>%
+      distinct()
+    
+    # Loop on all parameters of disturbance i
+    for(j in 1:dim(data.i)[1]){
+      # Convert mcmc i, parameter j in a matrix with row = iter and col = chain
+      matrix.ij <- as.matrix(
+        mcmc.i %>%
+          filter(Parameter == data.i$Parameter[j]) %>%
+          mutate(Chain = paste0("chain", Chain)) %>%
+          dplyr::select(Iteration, Chain, value) %>%
+          spread(key = "Chain", value = "value") %>%
+          dplyr::select(-Iteration))
+      # calculate rhat from this matrix
+      data.i$rhat[j] <- Rhat(matrix.ij)
+    }
+    
+    # Add to final dataset
+    if(i == 1) data.out <- data.i
+    if(i > 1) data.out <- rbind(data.out, data.i)
+    
+  }
+  
+  # Final plot
+  plot.out <- data.out %>%
+    mutate(disturbance = factor(disturbance, levels = disturbances.in)) %>%
+    ggplot(aes(x = rhat))  + 
+    geom_histogram(color = "black", aes(fill = disturbance)) +
+    scale_fill_manual(values = colors.in) +
+    facet_grid(Param.cat ~ disturbance, scales = "free_y") +
+    theme(panel.background = element_rect(color = "black", fill = "white"), 
+          strip.background = element_blank(), 
+          panel.grid = element_blank(), 
+          legend.position = "none", 
+          strip.text.y = element_text(angle = 360))  + 
+    geom_vline(xintercept = 1.1, linetype = "dashed")
+  
+  
+  # - Save the plot
+  ggsave(file.in, plot.out, width = 15, height = 15, units = "cm", dpi = 600, bg = "white")
+  
+  # return the name of all the plots made
+  return(file.in)
+  
+  
+}
 
 
 
@@ -1145,7 +1459,7 @@ plot_rda_traits_vs_sensitivity <- function(traits, disturbance_sensitivity,
   
   ##%%%%%%%%%
   ## - Export plot
-  ggsave(file.in, plot.out, width = 14, height = 11, units = "cm", dpi = 600)
+  ggsave(file.in, plot.out, width = 14, height = 11, units = "cm", dpi = 600, bg = "white")
   return(file.in)
   
 }
@@ -1283,7 +1597,7 @@ plot_rda_traits_vs_sensitivity_allDist <- function(traits, disturbance_sensitivi
                           labels = paste0("(", letters[c(1:length(disturbances.in))], ")"))
     
     # Export plot
-    ggsave(file.in, plot.out, width = 30, height = 10, units = "cm", dpi = 600)
+    ggsave(file.in, plot.out, width = 30, height = 10, units = "cm", dpi = 600, bg = "white")
   }
   
   return(file.in)
@@ -1296,7 +1610,7 @@ plot_rda_traits_vs_sensitivity_allDist <- function(traits, disturbance_sensitivi
 #' @param gbif_disturbance_file Name of the file containing species mean disturbance index
 #' @param disturbance_sensitivity list of dataset containing disturbance sensitivity per species
 #' @param file.in Where to save the plot
-plot_rda_climate <- function(disturbance_sensitivity, gbif_file, gbif_disturbance_file, file.in){
+plot_rda_climate <- function(disturbance_sensitivity, gbif_file, file.in){
   
   ## - Create directory if needed
   create_dir_if_needed(file.in)
@@ -1324,11 +1638,6 @@ plot_rda_climate <- function(disturbance_sensitivity, gbif_file, gbif_disturbanc
       # Add sensitivity
       left_join(disturbance_sensitivity[[i]], by = "species") %>%
       drop_na()
-    
-    # Add variable depending on the disturbance
-    if(disturbances.in[i] == "storm") traits.i <- left_join(traits.i, (fread(gbif_disturbance_file) %>% dplyr::select(species, windspeed)), by = "species")
-    if(disturbances.in[i] == "snow") traits.i <- left_join(traits.i, (fread(gbif_disturbance_file) %>% dplyr::select(species, swe)), by = "species")
-    if(disturbances.in[i] == "fire") traits.i <- left_join(traits.i, (fread(gbif_disturbance_file) %>% dplyr::select(species, fwi)), by = "species")
     
     # scale trait dataset
     traits.scaled.i <- scale(as.matrix(traits.i %>% dplyr::select(colnames(.)[!(colnames(.) %in% c("species", "p", "p_975", "p_025"))])))
@@ -1383,15 +1692,15 @@ plot_rda_climate <- function(disturbance_sensitivity, gbif_file, gbif_disturbanc
       scale_y_continuous(breaks = c(0:5)*0.2)
     
     # Plot rda
-    plot.rda <- data.frame(trait = c("windspeed", "fwi", "swe", "map", "mat", "tmin"), 
-                           position = c(1:6)) %>%
+    plot.rda <- data.frame(trait = c("map", "mat", "tmin"), 
+                           position = c(1:3)) %>%
       left_join(data.frame(trait = as.character(rownames(summary(rda)$species)), 
                            rda1 = summary(rda)$species[, 1]), by = "trait") %>%
       mutate(trait = factor(trait, levels = c("map", "tmin", "mat", "windspeed", "fwi", "swe"))) %>%
       ggplot(aes(x = 0, xend = rda1, y = position, yend = position)) + 
       geom_segment(arrow = arrow(length = unit(0.1, "cm")), type = "closed") + 
-      scale_y_continuous(breaks = c(1:6), 
-                         labels = c("windspeed", "fwi", "swe", "map", "mat", "tmin"), 
+      scale_y_continuous(breaks = c(1:3), 
+                         labels = c("map", "mat", "tmin"), 
                          expand = c(0.25, 0)) +
       geom_vline(xintercept = 0, color = "darkgray") +
       theme(panel.background = element_rect(color = "black", fill = "white"), 
@@ -1489,7 +1798,7 @@ plot_rda_climate <- function(disturbance_sensitivity, gbif_file, gbif_disturbanc
                           (ggplot() + theme_void()),
                           plot.rda, nrow = 1, labels = c("(a)", "", ""), rel_widths = c(0.6, 0.1, 1))
     # Save the plot
-    ggsave(file.in, plot.out, width = 35, height = 20, units = "cm", dpi = 600, bg = "white")
+    ggsave(file.in, plot.out, width = 35, height = 20, units = "cm", dpi = 600)
   }
   
   # If up to three disturbances
@@ -1581,7 +1890,7 @@ plot_traits_vs_sensitivity <- function(traits, disturbance_sensitivity, disturba
                      scales::pvalue(anova(model.i)[1, 5], add_p = TRUE, accuracy = 0.01))) 
     
     # Save the plot
-    ggsave(file.in.i, plot.i, width = 14, height = 11, units = "cm", dpi = 600)
+    ggsave(file.in.i, plot.i, width = 14, height = 11, units = "cm", dpi = 600, bg = "white")
     
     # Add filename to the output
     out <- c(out, file.in.i)
@@ -1619,3 +1928,818 @@ plot_traits_vs_sensitivity_allDist <- function(traits, disturbance_sensitivity, 
 
 
 
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+## Plots for the manuscript ------------
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
+#' Function to plot results of the climate analysis for the manuscript
+#' @param gbif_file Name of the file containing species mean climate
+#' @param gbif_disturbance_file Name of the file containing species mean disturbance index
+#' @param disturbance_sensitivity list of dataset containing disturbance sensitivity per species
+#' @param disturbance_sensitivity_bis list of dataset containing disturbance sensitivity to snow and biotic
+#' @param file.in Where to save the plot
+plot_rda_climate_ms <- function(disturbance_sensitivity, disturbance_sensitivity_bis, 
+                                gbif_file, gbif_disturbance_file, file.in){
+  
+  ## - Create directory if needed
+  create_dir_if_needed(file.in)
+  
+  ## - Assemble the two disturbance sensitivity files
+  disturbance_sensitivity.in <- c(disturbance_sensitivity, disturbance_sensitivity_bis[c("snow", "biotic")])
+  
+  ## - Names of the disturbances
+  disturbances.in <- names(disturbance_sensitivity.in)
+  
+  # Create a vector of colors for plotting
+  color.in <- (data.frame(disturbance = disturbances.in) %>%
+                 left_join(data.frame(disturbance = c("biotic", "fire", "other", "snow", "storm"), 
+                                      color = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")), 
+                           by = "disturbance"))$color
+  
+  # Compile trait dataset
+  traits <- fread(gbif_file) %>% dplyr::select(species, mat, tmin, map)
+  
+  
+  
+  
+  
+  
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # - STEP 1 - RDA SENSITIVITY VS MEAN CLIMATE
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  
+  
+  ## - Initialize output
+  plots.out <- list()
+  
+  ## - Loop on all type of disturbances
+  for(i in 1:length(disturbances.in)){
+    
+    # Remove na in trait table
+    traits.i <- traits %>%
+      # Add sensitivity
+      left_join(disturbance_sensitivity.in[[i]], by = "species") %>%
+      drop_na()
+    
+    # scale trait dataset
+    traits.scaled.i <- scale(as.matrix(traits.i %>% dplyr::select(colnames(.)[!(colnames(.) %in% c("species", "p", "p_975", "p_025"))])))
+    
+    # Make rda
+    rda <- rda(traits.scaled.i ~ p, traits.i,  scale = FALSE)
+    
+    
+    # Results of the rda
+    res.rda.ind <- data.frame(species = traits.i$species, 
+                              rda1 = as.numeric(summary(rda)$sites[, 1])) %>%
+      mutate(species.short = paste0(substr(species, 1, 2), substr(gsub(".+\\ ", "", species), 1, 2)))
+    
+    # Identify maximum coordinates of species in rda
+    max.rda1 <- max(sqrt(res.rda.ind$rda1^2)) + 0.1
+    
+    # Data for model
+    data.model <- disturbance_sensitivity.in[[i]] %>%
+      # Logit transformation
+      mutate(sensitivity.logit = log(p/(1 - p)), 
+             w = 1/(p_975 - p_025)) %>%
+      # Add pca
+      left_join(res.rda.ind, by = "species") %>%
+      drop_na()
+    
+    
+    # Make regression sensitivity vs rda
+    model.rda1 <- lm(sensitivity.logit ~ rda1, weights = w, data = data.model)
+    
+    # Data for the predictions
+    data.fit <- data.frame(rda1 = c(round(-max.rda1*1000, digits = 0):round(max.rda1*1000, digits = 0))/1000) %>%
+      mutate(fit.logit = predict(model.rda1, newdata = .), 
+             fit.se = predict(model.rda1, newdata = ., se.fit = TRUE)$se.fit,
+             fit = plogis(fit.logit), 
+             fit.inf = plogis(fit.logit - fit.se), 
+             fit.sup = plogis(fit.logit + fit.se), 
+             p = NA_real_)
+    
+    # Plot predictions pca1
+    plot.model <- data.model %>%
+      ggplot(aes(x = rda1, y = p, group = 1)) + 
+      geom_errorbar(aes(ymin = p_025, ymax = p_975), width = 0, color = "#343A40") +
+      geom_point(size = 2, shape = 21, fill = color.in[i], color = "#343A40") + 
+      geom_line(data = data.fit, aes(y = fit), inherit.aes = TRUE, color = color.in[i]) + 
+      geom_ribbon(data = data.fit, aes(ymin = fit.inf, ymax = fit.sup), 
+                  alpha = 0.5, fill = color.in[i], inherit.aes = TRUE) +
+      xlab(paste0("RDA1 (", round(summary(rda)$cont$importance[2, 1]*100, digits = 2), "%)")) + 
+      ylab("Disturbance sensitivity") +
+      theme(panel.background = element_rect(color = "black", fill = "white"), 
+            panel.grid = element_blank()) + 
+      xlim(-max.rda1, max.rda1) + 
+      scale_y_continuous(breaks = c(0:5)*0.2)
+    
+    # Plot rda
+    plot.rda <- data.frame(trait = c("map", "mat", "tmin"), 
+                           position = c(1:3)) %>%
+      left_join(data.frame(trait = as.character(rownames(summary(rda)$species)), 
+                           rda1 = summary(rda)$species[, 1]), by = "trait") %>%
+      mutate(trait = factor(trait, levels = c("map", "tmin", "mat", "windspeed", "fwi", "swe"))) %>%
+      ggplot(aes(x = 0, xend = rda1, y = position, yend = position)) + 
+      geom_segment(arrow = arrow(length = unit(0.1, "cm")), type = "closed") + 
+      scale_y_continuous(breaks = c(1:3), 
+                         labels = c("map", "mat", "tmin"), 
+                         expand = c(0.25, 0)) +
+      geom_vline(xintercept = 0, color = "darkgray") +
+      theme(panel.background = element_rect(color = "black", fill = "white"), 
+            panel.grid = element_blank()) + 
+      ylab("") + xlim(-max.rda1, max.rda1) + xlab("") +
+      labs(title = paste0(toupper(substr(disturbances.in[i], 1, 1)), 
+                          substr(disturbances.in[i], 2, nchar(disturbances.in[i]))), 
+           subtitle = paste0("F = ", round(anova(model.rda1)[1, 4], digits = 1), ", ",
+                             scales::pvalue(anova(model.rda1)[1, 5], add_p = TRUE, accuracy = 0.01)))
+    
+    # Adjust axis and titles depending on graph position
+    if(i > 1){
+      plot.rda <- plot.rda + theme(axis.text.y = element_blank(), 
+                                   axis.ticks.y = element_blank())
+      plot.model <- plot.model + ylab("") 
+    } 
+    
+    
+    # Plot all graphs together
+    plot.i <- plot_grid(plot.rda, plot.model, nrow = 2, rel_heights = c(0.5, 1), align = "v")
+    
+    # Add to the output list
+    eval(parse(text = paste0("plots.out$", disturbances.in[i], " <- plot.i")))
+  }
+  
+  plot.rda <- plot_grid(plotlist = plots.out, nrow = 1, align = "hv")
+  
+  
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # - STEP 2 - SENSITIVITY VS DISTURBNACE INDEX
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  
+  # Initialize plot list
+  plots.disturbance <- list()
+  
+  # Couples disturbance - index
+  disturbance.index <- data.frame(disturbance = c("snow", "storm", "fire"), 
+                                  index = c("swe", "windspeed", "fwi"), 
+                                  name = c("Snow Water Equivalent", "Mean windspeed", "Fire Weather Index"), 
+                                  color = c("#006D77", "#4361EE", "#F77F00"))
+  
+  # Loop on all couples
+  for(j in 1:dim(disturbance.index)[1]){
+    # Data for the model
+    data.model.j <- as.data.frame(disturbance_sensitivity.in[disturbance.index$disturbance[j]])
+    colnames(data.model.j) <- c("species", "p", "p_025", "p_975")
+    data.model.j <- data.model.j %>%
+      left_join(fread(gbif_disturbance_file) %>% dplyr::select("species", "index" = disturbance.index$index[j]), 
+                by = "species") %>%
+      mutate(sensitivity.logit = log(p/(1 - p)), 
+             w = 1/(p_975 - p_025)) %>%
+      drop_na()
+    # model
+    model.j <- lm(sensitivity.logit ~ index, weights = w, data = data.model.j)
+    # Data with predictions
+    data.fit.j <- data.frame(index = c(round(min(data.model.j$index)*100, digits = 0):
+                                         round(max(data.model.j$index)*100, digits = 0)/100)) %>%
+      mutate(fit.logit = predict(model.j, newdata = .), 
+             fit.se = predict(model.j, newdata = ., se.fit = TRUE)$se.fit,
+             fit = plogis(fit.logit), 
+             fit.inf = plogis(fit.logit - fit.se), 
+             fit.sup = plogis(fit.logit + fit.se), 
+             p = NA_real_)
+    # Plot
+    plot.j <- data.model.j %>%
+      ggplot(aes(x = index, y = p, group = 1)) + 
+      geom_errorbar(aes(ymin = p_025, ymax = p_975), width = 0, color = "#343A40") +
+      geom_point(size = 2, shape = 21, fill = disturbance.index$color[j], color = "#343A40") + 
+      geom_line(data = data.fit.j, aes(y = fit), inherit.aes = TRUE, color = disturbance.index$color[j]) + 
+      geom_ribbon(data = data.fit.j, aes(ymin = fit.inf, ymax = fit.sup), 
+                  alpha = 0.5, fill = disturbance.index$color[j], inherit.aes = TRUE) +
+      xlab(disturbance.index$name[j]) + 
+      ylab(paste0("Sensitivity to ", disturbance.index$disturbance[j])) +
+      theme(panel.background = element_rect(color = "black", fill = "white"), 
+            panel.grid = element_blank()) + 
+      scale_y_continuous(breaks = c(0:5)*0.2) + 
+      ggtitle(paste0("F = ", round(anova(model.j)[1, 4], digits = 1), ", ",
+                     scales::pvalue(anova(model.j)[1, 5], add_p = TRUE, accuracy = 0.01)))
+    # Add to the output list
+    eval(parse(text = paste0("plots.disturbance$", disturbance.index$index[j], " <- plot.j")))
+  }
+  # Assemble the plots
+  plot.distIndex <- plot_grid(plotlist = plots.disturbance, nrow = 1, align = "hv")
+  
+  
+  
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # - STEP 3 - PCA OF SPECIES MEAN CLIMATE
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  
+  # - Climatic values per species
+  gbif_climate <- fread(gbif_file) %>%
+    dplyr::select(species, mat, tmin, map) %>%
+    drop_na()
+  
+  # - Make PCA 
+  pca <- prcomp((gbif_climate %>% dplyr::select(-species)), 
+                center = T, scale = T)
+  
+  # - Extract the coordinates of the ndividuals on pca axis
+  res.ind <- data.frame(species = gbif_climate$species, 
+                        pca1 = get_pca_ind(pca)[[1]][, 1], 
+                        pca2 = get_pca_ind(pca)[[1]][, 2]) %>%
+    mutate(sp = paste(substr(gsub("\\ .+", "", species), 1, 2), 
+                      substr(gsub(".+\\ ", "", species), 1, 2), 
+                      sep = "."))
+  
+  # - Extract the coordinates of the variables on pca axis
+  res.var <- data.frame(var = rownames(get_pca_var(pca)[[1]]), 
+                        pca1 = get_pca_var(pca)[[1]][, 1], 
+                        pca2 = get_pca_var(pca)[[1]][, 2])
+  
+  # - Minimum and maximum in each pca axis
+  pca.xmin <- -max(abs(res.ind$pca1))
+  pca.xmax <- max(abs(res.ind$pca1))
+  pca.ymin <- -max(abs(res.ind$pca2))
+  pca.ymax <- max(abs(res.ind$pca2))
+  
+  # Make the plot
+  plot.pca <- res.ind %>%
+    ggplot(aes(x = pca1, y = pca2)) + 
+    geom_point(fill = "#023E8A", color = "black", shape = 21) +
+    geom_text(aes(label = sp), nudge_y = 0.1, color = "#023E8A", size = 3) +
+    geom_segment(data = (res.var %>% mutate(pca1 = pca1*1.5, pca2 = pca2*1.5)), 
+                 aes(x = 0, xend = pca1, y = 0, yend = pca2), 
+                 arrow = arrow(length = unit(0.1, "cm")), 
+                 type = "closed", color = "#D90429") + 
+    geom_text(data = (res.var %>% mutate(pca1 = pca1*1.5, pca2 = pca2*1.5)), 
+              aes(label = var), color = "#D90429", size = 5, 
+              nudge_x = ifelse(res.var$pca1 < 0, pca.xmin/12, pca.xmax/12)) +
+    geom_hline(size = 0.2, yintercept = 0, color = "#6C757D", linetype = "dashed") + 
+    geom_vline(size = 0.2, xintercept = 0, color = "#6C757D", linetype = "dashed") + 
+    xlim((pca.xmin-0.2), (pca.xmax+0.2)) + 
+    ylim((pca.ymin-0.2), (pca.ymax+0.2)) +
+    xlab(paste0("PCA1 (", round(summary(pca)$importance[2, 1]*100, digits = 2), "%)")) +
+    ylab(paste0("PCA2 (", round(summary(pca)$importance[2, 2]*100, digits = 2), "%)")) +
+    theme(panel.background = element_rect(color = "black", fill = "white"), 
+          panel.grid = element_blank())
+  
+  
+  # Final plot
+  plot.out <- plot_grid(plot.rda, 
+                        plot_grid(plot.pca, plot.distIndex, align = "hv", 
+                                  nrow = 1, rel_widths = c(0.3, 1), labels = c("(b)", "(c)")), 
+                        nrow = 2, labels = c("(a)", ""))
+  
+  # Save the plot
+  ggsave(file.in, plot.out, width = 35, height = 20, units = "cm", dpi = 600, bg = "white")
+  
+  return(file.in)
+  
+}
+
+
+#' Plot correlation matrix between the sensitivity to each disturbance
+#' @param disturbance_sensitivity dataset containing disturbance sensitivity per species
+#' @param disturbance_sensitivity_bis list of dataset containing disturbance sensitivity to snow and biotic
+#' @param file.in Name of the file to save (including path)
+plot_correlation_disturbance <- function(disturbance_sensitivity, disturbance_sensitivity_bis, file.in){
+  
+  ## - Create directory if needed
+  create_dir_if_needed(file.in)
+  
+  ## - Assemble the two disturbance sensitivity files
+  disturbance_sensitivity.in <- c(disturbance_sensitivity, disturbance_sensitivity_bis)
+  
+  ## - Loop on all disturbance types to assemble data sets
+  for(i in 1:length(names(disturbance_sensitivity.in))){
+    data.in.i <- as.data.frame(disturbance_sensitivity.in[[i]]) %>%
+      mutate(disturbance = names(disturbance_sensitivity.in)[i])
+    if(i == 1) data.in <- data.in.i
+    if(i > 1) data.in <- rbind(data.in, data.in.i)
+  }
+  
+  ## - Format the dataset to get one column per disturbance, and one line per species
+  data.in <- data.in %>% 
+    dplyr::select(species, disturbance, p) %>%
+    spread(key = disturbance, value = p)
+  
+  ## - Make the plot
+  plot.out <- ggpairs(data.in %>% dplyr::select(-species)) + 
+    theme(panel.background = element_rect(fill = "white", color = "black"), 
+          panel.grid = element_blank(), 
+          strip.background = element_blank()) 
+  
+  ## - Export plot
+  ggsave(file.in, plot.out, width = 15, height = 15, units = "cm", dpi = 600, bg = "white")
+  
+  return(file.in)
+}
+
+
+
+#' Plot to verify that species sensitivity is not related to the mean intensity or to the number of trees exposed
+#' @param disturbance_sensitivity.in dataset containing disturbance sensitivity per species
+#' @param jags.model.in object generated by a function form the script functions_analysis.R
+#' @param data_jags.in input data for the model jags.model.in
+#' @param file.in Name of the file to save (path included)
+plot_sensitivity_vs_intensity_and_ntrees <- function(disturbance_sensitivity.in, jags.model.in, data_jags.in, file.in){
+  
+  # Create directory if needed
+  create_dir_if_needed(file.in)
+  
+  # Name of the disturbances
+  disturbances.in <- names(disturbance_sensitivity.in)
+  
+  # Create a vector of colors for plotting
+  color.in <- (data.frame(disturbance = disturbances.in) %>%
+                 left_join(data.frame(disturbance = c("biotic", "fire", "other", "snow", "storm"), 
+                                      color = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")), 
+                           by = "disturbance"))$color
+  
+  # Initialize plot lists
+  plots.intensity <- list()
+  plots.ntrees <- list()
+  
+  # Loop on all distrubance types
+  for(i in 1:length(disturbances.in)){
+    
+    # intensity per plotcode 
+    intensity.i <- extract_intensity_per_plotcode(jags.model.in[[i]], data_jags.in[[i]]) %>%
+      gather(key = "iteration", value = "intensity", colnames(.)[c(2:dim(.)[2])]) %>%
+      group_by(plotcode) %>%
+      summarize(intensity = mean(intensity))
+    
+    # Calculate mean intensity per species and cross with disturbance sensitivity
+    data.i <- data.frame(sp = data_jags.in[[i]]$data_jags$sp, 
+                         plot = data_jags.in[[i]]$data_jags$plot) %>%
+      left_join(data_jags.in[[i]]$plotcode.table, by = "plot") %>%
+      left_join(data_jags.in[[i]]$species.table, by = "sp") %>%
+      group_by(plotcode, species) %>%
+      summarize(n = n()) %>%
+      ungroup() %>%
+      group_by(plotcode) %>%
+      mutate(rate = n/sum(n)) %>%
+      left_join(intensity.i, by = "plotcode") %>%
+      ungroup() %>%
+      group_by(species) %>%
+      summarize(intensity.mean = sum(rate*intensity)/sum(rate), 
+                n.tree.exposed = sum(n)) %>%
+      left_join(disturbance_sensitivity.in[[i]], by = "species") %>%
+      mutate(sensitivity.logit = log(p/(1 - p)), 
+             w = 1/(p_975 - p_025))
+    
+    # Models of disturbance sensitivity against intensity and number of trees
+    model.intensity.i <- lm(sensitivity.logit ~ intensity.mean, weights = w, data = data.i)
+    model.ntrees.i <- lm(sensitivity.logit ~ n.tree.exposed, weights = w, data = data.i)
+    
+    # Data for the predictions of the intensity model
+    data.fit.intensity <- data.frame(intensity.mean = c(round(min(data.i$intensity.mean)*100, digits = 0):
+                                                          round(max(data.i$intensity.mean)*100, digits = 0))/100) %>%
+      mutate(fit.intensity.logit = predict(model.intensity.i, newdata = .)) %>%
+      mutate(fit.intensity.se = predict(model.intensity.i, newdata = ., se.fit = TRUE)$se.fit) %>%
+      mutate(fit.intensity = plogis(fit.intensity.logit)) %>%
+      mutate(fit.intensity.inf = plogis(fit.intensity.logit - fit.intensity.se)) %>%
+      mutate(fit.intensity.sup = plogis(fit.intensity.logit + fit.intensity.se)) %>%
+      mutate(p = NA_real_)
+    
+    # Data for the predictions of the ntrees model
+    data.fit.ntrees <- data.frame(n.tree.exposed = c(min(data.i$n.tree.exposed):max(data.i$n.tree.exposed))) %>%
+      mutate(fit.ntrees.logit = predict(model.ntrees.i, newdata = .)) %>%
+      mutate(fit.ntrees.se = predict(model.ntrees.i, newdata = ., se.fit = TRUE)$se.fit) %>%
+      mutate(fit.ntrees = plogis(fit.ntrees.logit)) %>%
+      mutate(fit.ntrees.inf = plogis(fit.ntrees.logit - fit.ntrees.se)) %>%
+      mutate(fit.ntrees.sup = plogis(fit.ntrees.logit + fit.ntrees.se)) %>%
+      mutate(p = NA_real_)
+    
+    # Plot for intensity
+    plot.intensity.i <- data.i %>%
+      ggplot(aes(x = intensity.mean, y = p, group = 1)) + 
+      geom_errorbar(aes(ymin = p_025, ymax = p_975), width = 0, color = "#343A40") +
+      geom_point(size = 2, shape = 21, fill = color.in[i], color = "#343A40") + 
+      geom_line(data = data.fit.intensity, aes(y = fit.intensity), inherit.aes = TRUE, color = color.in[i]) + 
+      geom_ribbon(data = data.fit.intensity, aes(ymin = fit.intensity.inf, ymax = fit.intensity.sup), 
+                  alpha = 0.5, fill = color.in[i], inherit.aes = TRUE) +
+      xlab("Mean disturbance intensity") + 
+      ylab("Disturbance sensitivity") +
+      theme(panel.background = element_rect(color = "black", fill = "white"), 
+            panel.grid = element_blank()) + 
+      scale_y_continuous(breaks = c(0:5)*0.2) +
+      labs(title = paste0(toupper(substr(disturbances.in[i], 1, 1)), 
+                          substr(disturbances.in[i], 2, nchar(disturbances.in[i]))), 
+           subtitle = paste0("F = ", round(anova(model.intensity.i)[1, 4], digits = 1), ", ",
+                             scales::pvalue(anova(model.intensity.i)[1, 5], add_p = TRUE, accuracy = 0.01)))
+    
+    # Plot for ntrees
+    plot.ntrees.i <- data.i %>%
+      ggplot(aes(x = n.tree.exposed, y = p, group = 1)) + 
+      geom_errorbar(aes(ymin = p_025, ymax = p_975), width = 0, color = "#343A40") +
+      geom_point(size = 2, shape = 21, fill = color.in[i], color = "#343A40") + 
+      geom_line(data = data.fit.ntrees, aes(y = fit.ntrees), inherit.aes = TRUE, color = color.in[i]) + 
+      geom_ribbon(data = data.fit.ntrees, aes(ymin = fit.ntrees.inf, ymax = fit.ntrees.sup), 
+                  alpha = 0.5, fill = color.in[i], inherit.aes = TRUE) +
+      xlab("Number of trees exposed") + 
+      ylab("Disturbance sensitivity") +
+      theme(panel.background = element_rect(color = "black", fill = "white"), 
+            panel.grid = element_blank()) + 
+      scale_y_continuous(breaks = c(0:5)*0.2) +
+      labs(title = paste0(toupper(substr(disturbances.in[i], 1, 1)), 
+                          substr(disturbances.in[i], 2, nchar(disturbances.in[i]))), 
+           subtitle = paste0("F = ", round(anova(model.ntrees.i)[1, 4], digits = 1), ", ",
+                             scales::pvalue(anova(model.ntrees.i)[1, 5], add_p = TRUE, accuracy = 0.01)))
+    
+    # Add to the plot lists
+    eval(parse(text = paste0("plots.intensity$", disturbances.in[i], " <- plot.intensity.i")))
+    eval(parse(text = paste0("plots.ntrees$", disturbances.in[i], " <- plot.ntrees.i")))
+    
+  }
+  
+  # Assemble all plots
+  plot.out <- plot_grid(plot_grid(plotlist = plots.intensity, nrow = 1, align = "hv", scale = 0.9), 
+                        plot_grid(plotlist = plots.ntrees, nrow = 1, align = "hv", scale = 0.9), 
+                        nrow = 2, align = "hv", labels = c("(a)", "(b)"))
+  
+  # Save the plot
+  ggsave(file.in, plot.out, width = 30, height = 13, units = "cm", dpi = 600, bg = "white")
+  
+  return(file.in)
+}
+
+
+
+
+#' Figure of parameter value per species for the manuscript
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param data_model Tree data formatted for the IPM.
+#' @param dbh.ref dbh value for which to predict values
+#' @param logratio.ref value of the ratio dbh/dqm for which to predict values
+#' @param I.ref disturbance intensity for which to predict values
+#' @param file.in Name and path of the plot to save
+plot_param_per_species_ms <- function(jags.model, data_jags, data_model, 
+                                      dbh.ref = 300, logratio.ref = 0, I.ref = 0.75, 
+                                      file.in){
+  
+  # Create directory if needed
+  create_dir_if_needed(file.in)
+  
+  # Initialize output
+  out <- list()
+  
+  # Identify disturbances 
+  disturbances.in <- names(jags.model)
+  
+  # Create a vector of colors for plotting
+  color.vector <- (data.frame(disturbance = disturbances.in) %>%
+                     left_join(data.frame(disturbance = c("biotic", "fire", "other", "snow", "storm"), 
+                                          color = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")), 
+                               by = "disturbance"))$color
+  
+  # Create a legend for the plot
+  plot.legend <- cowplot::get_legend(
+    data.frame(x = c(1:5), y = c(1:5), ymin = c(0:4), ymax = c(2:6), 
+               disturbance = factor(disturbances.in, levels = disturbances.in)) %>%
+      ggplot(aes(x = x, y = y, color = disturbance)) + 
+      geom_point() + 
+      geom_errorbar(aes(ymin = ymin, ymax = ymax), width = 0) + 
+      scale_color_manual(values = color.vector) + 
+      theme(legend.title = element_blank(), 
+            legend.key = element_blank(), 
+            legend.text = element_text(size = 15))
+  )
+  
+  # Loop on the three factor levels
+  for(j in 1:3){
+    
+    # Level of factor j
+    factor.j <- c("species sensitivity", "dbh effect", "dominance effect")[j]
+    
+    # Initialize the list that will contain the plots of plot i
+    plot.list.j <- list()
+    
+    # Initialize number of species per disturbance
+    n.sp.per.dist <- c()
+    
+    # Loop on all disturbances to extract data
+    for(i in 1:length(disturbances.in)){
+      
+      # Model to scale logratio
+      scale_logratio <- lm(logratio.scaled ~ logratio, 
+                           data = data.frame(logratio = data_model[[i]]$log_dbh_dqm, 
+                                             logratio.scaled = data_jags[[i]]$data_jags$logratio))
+      # Model to scale dbh
+      scale_dbh <- lm(dbh.scaled ~ dbh, 
+                      data = data.frame(dbh = data_model[[i]]$dbh, 
+                                        dbh.scaled = data_jags[[i]]$data_jags$dbh))
+      
+      # Parameter per species
+      param_per_species.i <- extract_param_per_species(jags.model[[i]], data_jags[[i]])
+      if(!(disturbances.in[i] %in% c("storm", "snow"))) param_per_species.i$a1 = NA_real_
+      param_per_species.i <- param_per_species.i %>%
+        group_by(species, iter) %>%
+        summarise(a0 = mean(a0), a1 = mean(a1), b = mean(b), c = mean(c))
+      
+      # Format data 
+      data.i <- expand.grid(species = data_jags[[i]]$species.table$species,
+                            dbh = dbh.ref, logratio = logratio.ref, I = I.ref, 
+                            iter = unique(param_per_species.i$iter), 
+                            disturbance = disturbances.in[i]) %>%
+        # Scale variables when needed
+        mutate(dbh.scaled = predict(scale_dbh, newdata = .), 
+               logratio.scaled = predict(scale_logratio, newdata = .)) %>%
+        # Add parameters per species
+        left_join(param_per_species.i, by = c("species", "iter")) %>%
+        # Compute probabilities
+        mutate(pd = case_when(disturbance %in% c("storm", "snow") ~ plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c), 
+                              TRUE ~ plogis(a0 + b*I*dbh.scaled^c))) %>%
+        # Average per species
+        group_by(species) %>%
+        summarise(sensitivity_mean = mean(pd), 
+                  sensitivity_ql = as.numeric(quantile(pd, probs = 0.025)), 
+                  sensitivity_qh = as.numeric(quantile(pd, probs = 0.975)), 
+                  dbh.effect_mean = mean(c), 
+                  dbh.effect_ql = as.numeric(quantile(c, probs = 0.025)), 
+                  dbh.effect_qh = as.numeric(quantile(c, probs = 0.975)), 
+                  dominance.effect_mean = mean(a1, na.rm = TRUE), 
+                  dominance.effect_ql = as.numeric(quantile(a1, probs = 0.025, na.rm = TRUE)), 
+                  dominance.effect_qh = as.numeric(quantile(a1, probs = 0.975, na.rm = TRUE))) %>%
+        # Arrange species by sensitivity value
+        ungroup() %>%
+        filter(!(species %in% c("Other conifer", "Other broadleaf"))) %>%
+        mutate(species = factor(species, levels = .$species[order(.$sensitivity_mean)])) %>%
+        # Format for plotting
+        gather(key = "variable", value = "value", colnames(.)[which(colnames(.) != "species")]) %>%
+        separate(col = "variable", into = c("parameter", "value.type"), sep = "_") %>%
+        spread(key = "value.type", value = "value") %>%
+        mutate(parameter = gsub("\\.", "\\ ", parameter)) %>%
+        mutate(parameter = ifelse(parameter != "sensitivity", parameter, "species sensitivity")) %>%
+        mutate(parameter = factor(parameter, levels = c("species sensitivity", "dbh effect", "dominance effect")))
+      
+      # Case where the plot should be empty
+      if(factor.j == "dominance effect" & disturbances.in[i] %in% c("other", "fire", "biotic")){
+        
+        # Make an empty plot, or use the legend if graph at the top right
+        if(j == 3 & disturbances.in[i] == "fire") plot.ij <- plot.legend
+        else plot.ij <- ggplot() + theme_void() 
+        
+      }else{
+        
+        # Build plot ij
+        plot.ij <- data.i %>%
+          mutate(parameter = as.character(parameter)) %>%
+          filter(parameter == factor.j) %>%
+          ggplot(aes(x = species, y = mean, ymin = ql, ymax = qh)) +
+          geom_errorbar(width = 0, color = color.vector[i]) +
+          geom_point(color = color.vector[i]) + 
+          coord_flip() + 
+          facet_wrap(~ parameter, scales = "free_x") + 
+          geom_hline(yintercept = 0, linetype = "dashed") + 
+          xlab("") + ylab("") +
+          theme(panel.background = element_rect(color = "black", fill = "white"), 
+                panel.grid = element_blank(), 
+                strip.background = element_blank(), 
+                axis.text.y = element_text(size = 7, face = "italic"), 
+                axis.text.x = element_text(size = 7), 
+                strip.text = element_text(size = 12))
+        
+        # If not the first plot of the list, remove y axis
+        if(j > 1) plot.ij <- plot.ij + theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+        
+      }
+      
+      # Add to the list
+      eval(parse(text = paste0("plot.list.j$", disturbances.in[i], " <- plot.ij")))
+      
+      # Add also the number of species
+      n.sp.per.dist <- c(n.sp.per.dist, length(unique(data.i$species)))
+      
+    }
+    
+    # Assemble plots ij, add label only if first column
+    if(j == 1){
+      plot.j <- plot_grid(plotlist = plot.list.j[c("fire", "storm", "other", "snow", "biotic")], 
+                          ncol = 1, align = "v", labels = c("(a)", "", "", "(b)", ""),
+                          rel_heights = (data.frame(disturbance = c("fire", "storm", "other", "snow", "biotic")) %>%
+                                           left_join(data.frame(disturbance = disturbances.in, h = (n.sp.per.dist + 10)), 
+                                                     by = "disturbance"))$h)
+    }else{
+      plot.j <- plot_grid(plotlist = plot.list.j[c("fire", "storm", "other", "snow", "biotic")], 
+                          ncol = 1, align = "v", 
+                          rel_heights = (data.frame(disturbance = c("fire", "storm", "other", "snow", "biotic")) %>%
+                                           left_join(data.frame(disturbance = disturbances.in, h = (n.sp.per.dist + 10)), 
+                                                     by = "disturbance"))$h)
+    }
+    
+    # Add to the output list
+    eval(parse(text = paste0("out$", gsub("\\ ", "\\.", factor.j), " <- plot.j")))
+    
+  }
+  
+  
+  # Assemble all plots
+  plot.out <- plot_grid(plotlist = out, nrow = 1, align = "h", rel_widths = c(1.3, 1, 1))
+  
+  ## - save the plot
+  ggsave(file.in, plot.out, width = 27, height = 30, units = "cm", dpi = 600, bg = "white")
+  return(file.in)
+}
+
+
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+## Outdated functions ------------
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
+
+#' Plot the comparison of disturbance intensity by two different models
+#' @param jags.model.1 jags model containing intensity value for model 1
+#' @param data_jags.1 data used for the model 1
+#' @param jags.model.2 jags model containing intensity value for model 2
+#' @param data_jags.2 data used for the model 2
+#' @param file.in Name and location of the file to save
+plot_intensity1_vs_intensity2 <- function(jags.model.1, data_jags.1, jags.model.2, 
+                                          data_jags.2, file.in){
+  
+  ## - Create directory if needed
+  create_dir_if_needed(file.in)
+  
+  
+  
+  ## - Build the plot
+  # Intensity for the first model
+  data.intensity.1 <- data.frame(plot = data_jags.1$data_jags$plot, 
+                                 Ifire = data_jags.1$data_jags$Dfire, 
+                                 Istorm = data_jags.1$data_jags$Dstorm, 
+                                 Iother = data_jags.1$data_jags$Dother) %>%
+    distinct() %>%
+    gather(key = "variable", value = "value", "Ifire", "Istorm", "Iother") %>%
+    mutate(Parameter = paste0(variable, "[", plot, "]")) %>%
+    filter(value == 1) %>%
+    left_join((ggs(as.mcmc(jags.model.1)) %>%
+                 filter(substr(Parameter, 1, 1) == "I") %>%
+                 group_by(Parameter) %>%
+                 dplyr::summarize(intensity.mod1 = mean(value, na.rm = T))), 
+              by = "Parameter") %>%
+    mutate(disturbance = gsub("I", "", variable)) %>%
+    left_join(data_jags.1$plotcode_table, by = "plot") %>%
+    dplyr::select(plotcode, disturbance, intensity.mod1)
+  # Intensity for the second model
+  data.intensity.2 <- data.frame(plot = data_jags.2$data_jags$plot, 
+                                 Ifire = data_jags.2$data_jags$Dfire, 
+                                 Istorm = data_jags.2$data_jags$Dstorm, 
+                                 Iother = data_jags.2$data_jags$Dother) %>%
+    distinct() %>%
+    gather(key = "variable", value = "value", "Ifire", "Istorm", "Iother") %>%
+    mutate(Parameter = paste0(variable, "[", plot, "]")) %>%
+    filter(value == 1) %>%
+    left_join((ggs(as.mcmc(jags.model.2)) %>%
+                 filter(substr(Parameter, 1, 1) == "I") %>%
+                 group_by(Parameter) %>%
+                 dplyr::summarize(intensity.mod2 = mean(value, na.rm = T))), 
+              by = "Parameter") %>%
+    mutate(disturbance = gsub("I", "", variable)) %>%
+    left_join(data_jags.2$plotcode_table, by = "plot") %>%
+    dplyr::select(plotcode, intensity.mod2)
+  # Plot the two intensities
+  plot.out <- data.intensity.1 %>%
+    left_join(data.intensity.2, by = "plotcode") %>%
+    ggplot(aes(x = intensity.mod1, y = intensity.mod2, fill = disturbance)) + 
+    geom_point(shape = 21, color = "black") + 
+    geom_abline(intercept = 0, slope = 1) + 
+    facet_wrap(~ disturbance) + 
+    scale_fill_manual(values = c("#F77F00", "#90A955", "#4361EE")) + 
+    theme(panel.background = element_rect(fill = "white", color = "black"), 
+          panel.grid = element_blank(), 
+          strip.background = element_blank(), 
+          legend.position = "none")
+  
+  
+  # - Save the three plots
+  ggsave(file.in, plot.out, width = 16, height = 6, units = "cm", dpi = 600)
+  
+  # return the name of all the plots made
+  return(file.in)
+}
+
+
+#' Plot senstivity to all disturbances against traits on one multipanel
+#' @param traits dataset containing trait values per species
+#' @param traits_TRY dataset containing trait values per species from TRY
+#' @param disturbance_sensitivity dataset containing disturbance sensitivity per species
+#' @param disturbance_sensitivity_bis list of dataset containing disturbance sensitivity to snow and biotic
+#' @param file.in Name of the file to save (including path)
+plot_traits_vs_sensitivity_ms <- function(traits, traits_TRY, disturbance_sensitivity, 
+                                          disturbance_sensitivity_bis, file.in){
+  
+  ## - Create directory if needed
+  create_dir_if_needed(file.in)
+  
+  ## - Initialize plot list
+  plots.out <- list()
+  
+  ## - Assemble the two disturbance sensitivity files
+  disturbance_sensitivity.in <- c(disturbance_sensitivity, disturbance_sensitivity_bis[c("snow", "biotic")])
+  
+  ## - Loop on all disturbance types to assemble data sets
+  for(i in 1:length(names(disturbance_sensitivity.in))){
+    data.in.i <- as.data.frame(disturbance_sensitivity.in[[i]]) %>%
+      mutate(disturbance = names(disturbance_sensitivity.in)[i])
+    if(i == 1) data.in <- data.in.i
+    if(i > 1) data.in <- rbind(data.in, data.in.i)
+  }
+  
+  ## - Rearrange traits table
+  traits.in <- traits %>%
+    left_join(traits_TRY, by = "species") %>%
+    dplyr::select(
+      "species", 
+      "Wood density" = "wood.density_g.cm3", 
+      "Shade tolerance" = "shade.tolerance", 
+      "Root mass fraction" = "Root_mass_fraction", 
+      "Bark thickness" = "bark.thickness_mm", 
+      "H to dbh ratio" = "height.dbh.ratio", 
+      "Leaf CN ratio" = "TRY_leaf.CN.ratio_g.cm3", 
+      "Leaf NP ratio" = "TRY_leaf.NP.ratio_g.cm3", 
+      "Leaf Nmass" = "TRY_leaf.N.mass_mg.g", 
+      "Leaf Pmass" = "TRY_leaf.P.mass_mg.g", 
+      "SLA" = "TRY_leaf.sla_mm2mg-1", 
+      "Leaf thickness" = "TRY_leaf.thickness_mm", 
+      "Lifespan" = "TRY_plant.lifespan_year", 
+      "Stomata conductance" = "TRY_stomata.conductance_millimolm-2s-1"
+    )
+  
+  
+  # Loop on all traits
+  for(trait.i in colnames(traits.in)[which(colnames(traits.in) != "species")]){
+    
+    # Format data for the model
+    data.i <- data.in %>%
+      left_join((traits.in %>% dplyr::select("species", "trait" = trait.i)), 
+                by = "species") %>%
+      # Logit transformation and weight
+      mutate(sensitivity.logit = log(p/(1 - p)), 
+             w = 1/(p_975 - p_025)) %>%
+      # remove NA
+      drop_na()
+    
+    # Fit a model
+    model.i <- lmer(sensitivity.logit ~ trait + (1|species), weights = w, data = data.i)
+    
+    # Data with the predictions of the model
+    data.fit <- data.frame(
+      trait = c(round(min(data.i$trait)*100, digits = 0):round(max(data.i$trait)*100, digits = 0))/100) %>%
+      # Extract model coefficients
+      mutate(a = summary(model.i)$coefficients[1,1], 
+             a.se = summary(model.i)$coefficients[1,2], 
+             b = summary(model.i)$coefficients[2,1], 
+             b.se = summary(model.i)$coefficients[2,2]) %>%
+      # Predict output
+      mutate(fit.logit = a + b*trait, 
+             fit.logit.inf = a - a.se + (b - b.se)*trait,
+             fit.logit.sup = a + a.se + (b + b.se)*trait,
+             fit = plogis(fit.logit), 
+             fit.inf = plogis(fit.logit.inf), 
+             fit.sup = plogis(fit.logit.sup), 
+             p = NA_real_)
+    
+    # Plot predictions 
+    plot.i <- data.i %>%
+      mutate(disturbance = factor(disturbance, levels = c("biotic", "fire", "other", "snow", "storm"))) %>%
+      ggplot(aes(x = trait, y = p)) + 
+      geom_errorbar(aes(ymin = p_025, ymax = p_975, color =disturbance), width = 0) +
+      geom_point(size = 1, aes(color = disturbance)) + 
+      scale_color_manual(values = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")) +
+      geom_line(data = data.fit, aes(y = fit, group = 1), inherit.aes = TRUE) + 
+      geom_line(data = data.fit, aes(y = fit.inf, group = 1), linetype = "dashed", inherit.aes = TRUE) + 
+      geom_line(data = data.fit, aes(y = fit.sup, group = 1), linetype = "dashed", inherit.aes = TRUE) + 
+      ylab("Disturbance sensitivity") + xlab(trait.i) +
+      theme(panel.background = element_rect(color = "black", fill = "white"), 
+            panel.grid = element_blank(), 
+            legend.position = "none", 
+            title = element_text(size = 7), 
+            axis.title = element_text(size = 9)) + 
+      ggtitle(paste0("Chisq = ", round(Anova(model.i)[1, 1], digits = 2), ", ",
+                     scales::pvalue(Anova(model.i)[1, 3], add_p = TRUE, accuracy = 0.01))) 
+    
+    
+    # If the model is significant, add to the output list
+    if(round(Anova(model.i)[1, 3], digits = 2) <= 0.05){
+      eval(parse(text = paste0("plots.out$", gsub("\\ ", "", trait.i), " <- plot.i")))
+    }
+  }
+  
+  # Final plot
+  plot.out <- plot_grid(plotlist = plots.out, align = "hv", nrow = 1, scale = 0.9)
+  
+  # Save the plot
+  ggsave(file.in, plot.out, width = 20, height = 7, units = "cm", dpi = 600)
+  
+  return(file.in)
+  
+}

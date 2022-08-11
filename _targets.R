@@ -211,12 +211,6 @@ list(
   tar_target(fig_harvest_death_rate, plot_harvest_and_death_rate(
     data_model, "output/fig/exploratory/death_harvest_rates.png"), format = "file"), 
   
-  # Make a map of disturbance intensity for the reference model
-  tar_target(fig_disturbance_intensity, map_disturbance_intensity(
-    jags.model, data_jags, FUNDIV_plot, "output/fig/real_data/reference/map_intensity.png")), 
-  tar_target(fig_disturbance_intensity.2, map_disturbance_intensity_ter(
-    jags.model, data_jags, FUNDIV_plot, "output/fig/real_data/reference/map_intensity2.png")), 
-  
   # Plot trends in disturbance occurrence and severity over time
   tar_target(fig_disturbance_trends, plot_disturbance_trends(FUNDIV_plot, FUNDIV_tree, "output/fig/exploratory/disturbance_trends.jpg"), 
              format = "file"), 
@@ -239,8 +233,8 @@ list(
     gbif_disturbance_file, "output/fig/ms/sensitivity_vs_climate.jpg"), format = "file"), 
   
   # Make a map of disturbance intensity for model with all disturbances
-  tar_target(fig_disturbance_intensity_bis.2, map_disturbance_intensity_ter(
-    c(jags.model, jags.model_bis[c("snow", "biotic")]), c(data_jags, data_jags_bis[c("snow", "biotic")]), 
+  tar_target(fig_disturbance_intensity, map_disturbance_intensity_ter(
+    c(jags.model, jags.model_bis), c(data_jags, data_jags_bis), 
     rbind(FUNDIV_plot_bis, FUNDIV_plot), "output/fig/ms/map_intensity.png")), 
   
   # Traits vs sensitivity all disturbance together

@@ -87,12 +87,12 @@ list(
   # -- Step 3 - Model fit ----
   
   # Fit the reference model
-  tar_target(jags.model, fit_mortality(data_jags, n.chains = 3, n.iter = 100, n.burn = 20, n.thin = 1)), 
-  tar_target(jags.model_bis, fit_mortality(data_jags_bis, n.chains = 3, n.iter = 100, n.burn = 20, n.thin = 1)), 
+  tar_target(jags.model, fit_mortality(data_jags, n.chains = 3, n.iter = 5000, n.burn = 1000, n.thin = 20)), 
+  tar_target(jags.model_bis, fit_mortality(data_jags_bis, n.chains = 3, n.iter = 5000, n.burn = 1000, n.thin = 20)), 
   
   # Fit the model with stocking
-  tar_target(jags.model_stock, fit_mortality_stock(data_jags_stock, n.chains = 3, n.iter = 100, n.burn = 20, n.thin = 1)), 
-  tar_target(jags.model_stock_bis, fit_mortality_stock(data_jags_stock_bis, n.chains = 3, n.iter = 100, n.burn = 20, n.thin = 1)), 
+  tar_target(jags.model_stock, fit_mortality_stock(data_jags_stock, n.chains = 3, n.iter = 5000, n.burn = 1000, n.thin = 20)), 
+  tar_target(jags.model_stock_bis, fit_mortality_stock(data_jags_stock_bis, n.chains = 3, n.iter = 5000, n.burn = 1000, n.thin = 20)), 
   
   # Extract model predictions
   tar_target(disturbance_sensitivity, get_disturbance_sensivity(jags.model, data_jags, data_model, 

@@ -219,7 +219,7 @@ list(
   
   # Extract a table with statistics about disturbance per country
   tar_target(table_disurbance_stat, export_table_disturbance_stats(
-    FUNDIV_tree, FUNDIV_plot_bis, "output/table/disturbance_stat_bis.tex"), format = "file"),
+    FUNDIV_tree, rbind(FUNDIV_plot_bis, FUNDIV_plot), "output/table/disturbance_stat_bis.tex"), format = "file"),
   
   
   

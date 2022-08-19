@@ -259,6 +259,10 @@ list(
     c(jags.model, jags.model_bis), c(data_jags, data_jags_bis), c(data_model, data_model_bis), 
     file.in = "output/fig/ms/param_per_species.jpg"), format = "file"),
   
+  # Map of the disturbances
+  tar_target(fig_map_disturbances_ms, map_disturbances_ms(
+    FUNDIV_plot, FUNDIV_plot_bis, "output/fig/ms/map_disturbances.jpg"), format = "file"),
+  
   
   
   

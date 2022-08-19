@@ -2551,6 +2551,54 @@ plot_param_per_species_ms <- function(jags.model, data_jags, data_model,
 
 
 
+#' Plot the location of each plot and the nature of the disturbance
+#' @param FUNDIV_plot Plot table formatted for FUNDIV
+#' @param FUNDIV_plot_bis Plot table formatted for FUNDIV with only biotic and snow
+#' @param file.in Path and file where to save the plot
+map_disturbances_ms <- function(FUNDIV_plot, FUNDIV_plot_bis, file.in){
+  
+  ## - Create directories if needed
+  create_dir_if_needed(file.in)
+  
+  ## - Format data for plotting
+  data <- FUNDIV_plot %>%
+    filter(!(plotcode %in% FUNDIV_plot_bis$plotcode)) %>%
+    rbind(FUNDIV_plot_bis) %>%
+    filter(disturbance.nature %in% c("biotic", "storm", "snow", "fire", "other")) %>%
+    mutate(disturbance = factor(disturbance.nature, 
+                                levels = c("biotic", "fire", "other", "snow", "storm"))) %>%
+    dplyr::select(plotcode, latitude, longitude, disturbance)  %>%
+    st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant")
+  
+  
+  ## - Final plot
+  plot.out <- ne_countries(scale = "medium", returnclass = "sf") %>%
+    mutate(keep = ifelse(sovereignt %in% c("France", "Spain", "Finland"), "yes", "no")) %>%
+    ggplot(aes(geometry = geometry)) +
+    geom_sf(aes(fill = keep), color = "white", show.legend = F) + 
+    scale_fill_manual(values = c("#8D99AE", "#343A40")) +
+    geom_sf(data = data, shape = 16, aes(color = disturbance), size = 1.3) +
+    scale_color_manual(values = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")) +
+    coord_sf(xlim = c(-10, 32), ylim = c(36, 71)) +
+    guides(fill = FALSE, 
+           colour = guide_legend(override.aes = list(size=12))) +
+    annotation_scale(location = "br", width_hint = 0.2) + 
+    theme(panel.background = element_rect(color = 'black', fill = 'white'), 
+          panel.grid = element_blank(),
+          axis.text = element_text(size = 35),
+          legend.text = element_text(size = 45),
+          legend.title = element_blank(),
+          legend.position = c(0.1, 0.9), 
+          legend.key = element_blank())
+  
+  ## - save the plot
+  ggsave(file.in, plot.out, width = 33.8, height = 42.9, units = "cm", dpi = 600, bg = "white")
+  return(file.in)
+  
+}
+
+
+
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## Outdated functions ------------
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

@@ -2060,7 +2060,7 @@ plot_rda_climate_ms <- function(disturbance_sensitivity, disturbance_sensitivity
             panel.grid = element_blank(), 
             plot.title = element_text(size = 24, face = "bold"), 
             axis.text = element_text(size = 15), 
-            plot.subtitle = element_text(size = 20))
+            plot.subtitle = element_text(size = 15))
     
     # Adjust axis and titles depending on graph position
     if(i > 1){
@@ -2129,7 +2129,7 @@ plot_rda_climate_ms <- function(disturbance_sensitivity, disturbance_sensitivity
       theme(panel.background = element_rect(color = "black", fill = "white"), 
             panel.grid = element_blank(), 
             plot.title = element_text(size = 20), 
-            axis.title = element_text(size = 20)) + 
+            axis.title = element_text(size = 17)) + 
       scale_y_continuous(breaks = c(0:5)*0.2) + 
       ggtitle(paste0("F = ", round(anova(model.j)[1, 4], digits = 1), ", ",
                      scales::pvalue(anova(model.j)[1, 5], add_p = TRUE, accuracy = 0.01)))
@@ -2667,7 +2667,7 @@ plot_traits_vs_sensitivity_ms <- function(traits, traits_TRY, disturbance_sensit
   plot.out <- plot_grid(plotlist = plots.out, align = "hv", nrow = 1, scale = 0.9)
   
   # Save the plot
-  ggsave(file.in, plot.out, width = 20, height = 7, units = "cm", dpi = 600)
+  ggsave(file.in, plot.out, width = 20, height = 7, units = "cm", dpi = 600, bg = "white")
   
   return(file.in)
   
@@ -2700,7 +2700,7 @@ map_disturbances_ms <- function(FUNDIV_plot, FUNDIV_plot_bis, file.in){
     ggplot(aes(geometry = geometry)) +
     geom_sf(aes(fill = keep), color = "white", show.legend = F) + 
     scale_fill_manual(values = c("#8D99AE", "#343A40")) +
-    geom_sf(data = data, shape = 16, aes(color = disturbance), size = 1.3) +
+    geom_sf(data = data, shape = 16, aes(color = disturbance), size = 1.5) +
     scale_color_manual(values = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")) +
     coord_sf(xlim = c(-10, 32), ylim = c(36, 71)) +
     guides(fill = FALSE, 
@@ -2711,7 +2711,7 @@ map_disturbances_ms <- function(FUNDIV_plot, FUNDIV_plot_bis, file.in){
           axis.text = element_text(size = 35),
           legend.text = element_text(size = 45),
           legend.title = element_blank(),
-          legend.position = c(0.1, 0.9), 
+          legend.position = c(0.2, 0.9), 
           legend.key = element_blank())
   
   ## - save the plot

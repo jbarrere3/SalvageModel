@@ -262,6 +262,11 @@ list(
   tar_target(fig_map_disturbances_ms, map_disturbances_ms(
     FUNDIV_plot, FUNDIV_plot_bis, "output/fig/ms/map_disturbances.jpg"), format = "file"),
   
+  # Validation (observed vs predicted probabilities)
+  tar_target(fig_predict_vs_obs_meanProba_ms, plot_predicted_vs_observed(
+    c(jags.model, jags.model_bis), c(data_jags, data_jags_bis), c(data_model, data_model_bis), 
+    method = "mean.proba", "output/fig/ms/validation.png"), 
+    format = "file"),
   
   
   

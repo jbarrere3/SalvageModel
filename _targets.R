@@ -23,7 +23,7 @@ lapply(grep("R$", list.files("R"), value = TRUE), function(x) source(file.path("
 # install if needed and load packages
 packages.in <- c("dplyr", "ggplot2", "RCurl", "httr", "tidyr", "data.table", "sp", "R2jags", "rstan", "cowplot",
                  "ggmcmc", "taxize", "rnaturalearth", "ggspatial", "sf", "ggnewscale", "readxl", "scales", 
-                 "FactoMineR", "ade4", "factoextra", "xtable", "MASS", "vegan", "lme4", "car", "GGally")
+                 "FactoMineR", "ade4", "factoextra", "xtable", "MASS", "vegan", "lme4", "car", "GGally", "grid")
 for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.packages()))) install.packages(packages.in[i])
 # Targets options
 options(tidyverse.quiet = TRUE, 
@@ -232,7 +232,7 @@ list(
     gbif_disturbance_file, "output/fig/ms/sensitivity_vs_climate.jpg"), format = "file"), 
   
   # Make a map of disturbance intensity for model with all disturbances
-  tar_target(fig_disturbance_intensity_bis.2, map_disturbance_intensity_ter(
+  tar_target(fig_disturbance_intensity_bis.2, map_disturbance_intensity_ms(
     c(jags.model, jags.model_bis[c("snow", "biotic")]), c(data_jags, data_jags_bis[c("snow", "biotic")]), 
     rbind(FUNDIV_plot_bis, FUNDIV_plot), "output/fig/ms/map_intensity.png")), 
   

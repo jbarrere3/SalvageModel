@@ -2744,6 +2744,95 @@ plot_traits_vs_sensitivity_ms <- function(traits, traits_TRY, disturbance_sensit
 }
 
 
+#' Plot the relation between disturbance severity (observed) and intensity (estimated)
+#' along with the distribution of each disturbance intensity
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param FUNDIV_plot Plot table formatted for FUNDIV
+#' @param file.in Path and file where to save the plot
+map_disturbance_intensity_ms <- function(jags.model, data_jags, FUNDIV_plot, file.in){
+  
+  ## - Create directories if needed
+  create_dir_if_needed(file.in)
+  
+  ## - Identify disturbances 
+  disturbances.in <- names(jags.model)
+  
+  # Initialize output
+  plots.out <- list()
+  
+  ## - Loop on all disturbances
+  for(i in 1:length(disturbances.in)){
+    # Create spatial object with data for disturbance i
+    data.i <- extract_intensity_per_plotcode(jags.model[[i]], data_jags[[i]]) %>%
+      gather(key = "iter", value = "I", colnames(.)[which(colnames(.) != "plotcode")]) %>%
+      group_by(plotcode) %>%
+      summarize(intensity = mean(I)) %>%
+      mutate(disturbance = paste0(toupper(substr(disturbances.in[i], 1, 1)), 
+                                  substr(disturbances.in[i], 2, nchar(disturbances.in[i])))) %>%
+      mutate(disturbance = factor(disturbance)) %>%
+      left_join(FUNDIV_plot, by = "plotcode") %>%
+      dplyr::select("plotcode", "latitude", "longitude", "intensity", "disturbance") %>% 
+      st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant")
+    
+    # Histogram plot
+    hist.i <- data.i %>%
+      as.data.frame() %>%
+      dplyr::select(intensity) %>%
+      mutate(cat = cut(intensity, breaks = c(0:10)/10)) %>%
+      mutate(cat = ifelse(intensity < 0.1, 0, as.numeric(substr(cat, 2, 4)))) %>%
+      group_by(cat) %>%
+      summarise(n = n()) %>%
+      ggplot(aes(x = cat, y = n, fill = cat)) +
+      geom_bar(colour = "black", stat = "identity")  + 
+      scale_fill_gradientn(colours = colorRampPalette(c("#EDF2F4", "#EF233C", "#D90429"))(10)) + 
+      scale_x_continuous(breaks = c(0:9)/10) +
+      xlab("") + ylab("") +
+      theme(panel.background = element_rect(color = 'black', fill = 'white'), 
+            panel.grid = element_blank(), 
+            axis.text = element_blank(), 
+            axis.ticks = element_blank(), 
+            legend.position = "none", 
+            plot.margin = unit(c(0, 0, 0, 0), "cm")) 
+    
+    # Plot for disturbance i with histogram inserted
+    plot.i <- ne_countries(scale = "medium", returnclass = "sf") %>%
+      mutate(keep = ifelse(sovereignt %in% c("France", "Spain", "Finland"), "yes", "no")) %>%
+      ggplot(aes(geometry = geometry)) +
+      geom_sf(aes(fill = keep), color = "white", show.legend = F, size = 0.2) + 
+      scale_fill_manual(values = c("#8D99AE", "#343A40")) +
+      geom_sf(data = data.i, shape = 16, aes(color = intensity), 
+              show.legend = "point", size = 0.4) +
+      scale_color_gradient2(low = "#EDF2F4", mid = "#EF233C", high = "#D90429", midpoint = 0.4)  +
+      guides(fill = FALSE) +
+      theme(panel.background = element_rect(color = 'black', fill = 'white'), 
+            panel.grid = element_blank(), 
+            plot.title = element_text(size = 15, hjust = 0.5), 
+            legend.position = "none", 
+            axis.text = element_blank(), 
+            axis.ticks = element_blank()) + 
+      coord_sf(xlim = c(-10, 32), ylim = c(36, 71)) + 
+      ggtitle(paste0(toupper(substr(disturbances.in[i], 1, 1)), 
+                     substr(disturbances.in[i], 2, nchar(disturbances.in[i])))) +
+      annotation_custom(ggplotGrob(hist.i), xmin = -12, xmax = 3, ymin = 62, ymax = 72)
+    
+    # Add to the output plot list
+    eval(parse(text = paste0("plots.out$", disturbances.in[i], " <- plot.i")))
+    
+  }
+  
+  ## - Add a legend at the end of the list
+  plots.out$legend <- cowplot::get_legend(plot.i + theme(legend.position = "left"))
+  
+  ## - Final plot
+  plot.out <- plot_grid(plotlist = plots.out, nrow = 2) 
+  
+  ## - save the plot
+  ggsave(file.in, plot.out, width = 20, height = 18, units = "cm", dpi = 600, bg = "white")
+  return(file.in)
+  
+}
+
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## Outdated functions ------------
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

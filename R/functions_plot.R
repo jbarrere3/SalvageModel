@@ -2407,17 +2407,24 @@ plot_param_per_species_ms <- function(jags.model, data_jags, data_model,
                                           color = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")), 
                                by = "disturbance"))$color
   
+  # Create a vector of colors for the plot legend
+  color.legend <- (data.frame(disturbance = c("storm", "fire", "other", "biotic", "snow")) %>%
+                     left_join(data.frame(disturbance = c("biotic", "fire", "other", "snow", "storm"), 
+                                          color = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")), 
+                               by = "disturbance"))$color
+  
   # Create a legend for the plot
   plot.legend <- cowplot::get_legend(
     data.frame(x = c(1:5), y = c(1:5), ymin = c(0:4), ymax = c(2:6), 
-               disturbance = factor(disturbances.in, levels = disturbances.in)) %>%
+               disturbance = factor(disturbances.in, 
+                                    levels = c("storm", "fire", "other", "biotic", "snow"))) %>%
       ggplot(aes(x = x, y = y, color = disturbance)) + 
       geom_point() + 
       geom_errorbar(aes(ymin = ymin, ymax = ymax), width = 0) + 
-      scale_color_manual(values = color.vector) + 
+      scale_color_manual(values = color.legend) + 
       theme(legend.title = element_blank(), 
             legend.key = element_blank(), 
-            legend.text = element_text(size = 15))
+            legend.text = element_text(size = 19))
   )
   
   # Loop on the three factor levels
@@ -2491,7 +2498,7 @@ plot_param_per_species_ms <- function(jags.model, data_jags, data_model,
       if(factor.j == "dominance effect" & disturbances.in[i] %in% c("other", "fire", "biotic")){
         
         # Make an empty plot, or use the legend if graph at the top right
-        if(j == 3 & disturbances.in[i] == "fire") plot.ij <- plot.legend
+        if(j == 3 & disturbances.in[i] == "other") plot.ij <- plot.legend
         else plot.ij <- ggplot() + theme_void() 
         
       }else{
@@ -2505,17 +2512,30 @@ plot_param_per_species_ms <- function(jags.model, data_jags, data_model,
           geom_point(color = color.vector[i]) + 
           coord_flip() + 
           facet_wrap(~ parameter, scales = "free_x") + 
-          geom_hline(yintercept = 0, linetype = "dashed") + 
           xlab("") + ylab("") +
           theme(panel.background = element_rect(color = "black", fill = "white"), 
                 panel.grid = element_blank(), 
                 strip.background = element_blank(), 
-                axis.text.y = element_text(size = 7, face = "italic"), 
+                axis.text.y = element_text(size = 9, face = "italic"), 
                 axis.text.x = element_text(size = 7), 
-                strip.text = element_text(size = 12))
+                strip.text = element_text(size = 16), 
+                plot.margin = unit(c(0, 0, 0, 0), "cm"))
         
-        # If not the first plot of the list, remove y axis
-        if(j > 1) plot.ij <- plot.ij + theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+        # If dbh or dominance effect, remove axis ticks and add a vertical line for 0
+        if(j > 1) plot.ij <- plot.ij + 
+            theme(axis.text.y = element_blank(), axis.ticks.y = element_blank()) + 
+            geom_hline(yintercept = 0, linetype = "dashed") +
+            ylim(-2.3, 2.3)
+        
+        # If sensitivity, scale between 0 and 1
+        if(j == 1) plot.ij <- plot.ij + ylim(0, 1)
+        
+        # If not storm disturbance (positioned on top), remove strip title
+        if(disturbances.in[i] != "storm") plot.ij <- plot.ij + theme(strip.text = element_blank())
+        
+        # If not snow disturbance (positioned at bottom), remove x-axis text and ticks
+        if(disturbances.in[i] != "snow") plot.ij <- plot.ij + 
+            theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
         
       }
       
@@ -2529,15 +2549,15 @@ plot_param_per_species_ms <- function(jags.model, data_jags, data_model,
     
     # Assemble plots ij, add label only if first column
     if(j == 1){
-      plot.j <- plot_grid(plotlist = plot.list.j[c("fire", "storm", "other", "snow", "biotic")], 
+      plot.j <- plot_grid(plotlist = plot.list.j[c("storm", "fire", "other", "biotic", "snow")], 
                           ncol = 1, align = "v", labels = c("(a)", "", "", "(b)", ""),
-                          rel_heights = (data.frame(disturbance = c("fire", "storm", "other", "snow", "biotic")) %>%
+                          rel_heights = (data.frame(disturbance = c("storm", "fire", "other", "biotic", "snow")) %>%
                                            left_join(data.frame(disturbance = disturbances.in, h = (n.sp.per.dist + 10)), 
                                                      by = "disturbance"))$h)
     }else{
-      plot.j <- plot_grid(plotlist = plot.list.j[c("fire", "storm", "other", "snow", "biotic")], 
+      plot.j <- plot_grid(plotlist = plot.list.j[c("storm", "fire", "other", "biotic", "snow")], 
                           ncol = 1, align = "v", 
-                          rel_heights = (data.frame(disturbance = c("fire", "storm", "other", "snow", "biotic")) %>%
+                          rel_heights = (data.frame(disturbance = c("storm", "fire", "other", "biotic", "snow")) %>%
                                            left_join(data.frame(disturbance = disturbances.in, h = (n.sp.per.dist + 10)), 
                                                      by = "disturbance"))$h)
     }
@@ -2549,12 +2569,13 @@ plot_param_per_species_ms <- function(jags.model, data_jags, data_model,
   
   
   # Assemble all plots
-  plot.out <- plot_grid(plotlist = out, nrow = 1, align = "h", rel_widths = c(1.3, 1, 1))
+  plot.out <- plot_grid(plotlist = out, nrow = 1, align = "h", rel_widths = c(1.5, 1, 1))
   
   ## - save the plot
   ggsave(file.in, plot.out, width = 27, height = 30, units = "cm", dpi = 600, bg = "white")
   return(file.in)
 }
+
 
 
 #' Plot senstivity to all disturbances against traits on one multipanel

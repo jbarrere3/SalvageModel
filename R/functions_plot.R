@@ -12,6 +12,8 @@
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
+
+
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## 1. Generic functions ------------
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1348,7 +1350,7 @@ plot_rhat <- function(jags.model, file.in){
   
   
   # - Save the plot
-  ggsave(file.in, plot.out, width = 15, height = 15, units = "cm", dpi = 600, bg = "white")
+  ggsave(file.in, plot.out, width = 25, height = 15, units = "cm", dpi = 600, bg = "white")
   
   # return the name of all the plots made
   return(file.in)
@@ -2026,18 +2028,23 @@ plot_rda_climate_ms <- function(disturbance_sensitivity, disturbance_sensitivity
     plot.model <- data.model %>%
       ggplot(aes(x = rda1, y = p, group = 1)) + 
       geom_errorbar(aes(ymin = p_025, ymax = p_975), width = 0, color = "#343A40") +
-      geom_point(size = 2, shape = 21, fill = color.in[i], color = "#343A40") + 
-      geom_line(data = data.fit, aes(y = fit), inherit.aes = TRUE, color = color.in[i]) + 
-      geom_ribbon(data = data.fit, aes(ymin = fit.inf, ymax = fit.sup), 
-                  alpha = 0.5, fill = color.in[i], inherit.aes = TRUE) +
+      geom_point(size = 2, shape = 21, fill = color.in[i], color = "#343A40") +
       xlab(paste0("RDA1 (", round(summary(rda)$cont$importance[2, 1]*100, digits = 2), "%)")) + 
-      ylab("Disturbance sensitivity") +
+      ylab(expression(atop("Disturbance", "sensitivity"))) +
       theme(panel.background = element_rect(color = "black", fill = "white"), 
             panel.grid = element_blank(), 
             axis.title = element_text(size = 16), 
-            axis.text = element_text(size =12)) + 
+            axis.text = element_text(size =10)) + 
       xlim(-max.rda1, max.rda1) + 
-      scale_y_continuous(breaks = c(0:5)*0.2)
+      scale_y_continuous(breaks = c(0:5)*0.2, limits = c(0, 1))
+    
+    # Add line and confidence interval only if the regression is significant
+    if(anova(model.rda1)[1, 5] <= 0.05){
+      plot.model <- plot.model  + 
+        geom_line(data = data.fit, aes(y = fit), inherit.aes = TRUE, color = color.in[i]) + 
+        geom_ribbon(data = data.fit, aes(ymin = fit.inf, ymax = fit.sup), 
+                    alpha = 0.5, fill = color.in[i], inherit.aes = TRUE)
+    }
     
     # Plot rda
     plot.rda <- data.frame(trait = c("map", "mat", "tmin"), 
@@ -2058,9 +2065,11 @@ plot_rda_climate_ms <- function(disturbance_sensitivity, disturbance_sensitivity
                              scales::pvalue(anova(model.rda1)[1, 5], add_p = TRUE, accuracy = 0.01))) +
       theme(panel.background = element_rect(color = "black", fill = "white"), 
             panel.grid = element_blank(), 
-            plot.title = element_text(size = 24, face = "bold"), 
-            axis.text = element_text(size = 15), 
-            plot.subtitle = element_text(size = 15))
+            plot.title = element_text(size = 21), 
+            axis.text.y = element_text(size = 15), 
+            axis.text.x = element_blank(), 
+            axis.ticks.x = element_blank(),
+            plot.subtitle = element_text(size = 17, face = "italic"))
     
     # Adjust axis and titles depending on graph position
     if(i > 1){
@@ -2077,7 +2086,7 @@ plot_rda_climate_ms <- function(disturbance_sensitivity, disturbance_sensitivity
     eval(parse(text = paste0("plots.out$", disturbances.in[i], " <- plot.i")))
   }
   
-  plot.rda <- plot_grid(plotlist = plots.out, nrow = 1, align = "hv", 
+  plot.rda <- plot_grid(plotlist = plots.out, nrow = 1, align = "hv", rel_widths = c(1.2, 1, 1, 1, 1),
                         labels = c("(a)", "", "", "(b)", ""), label_size = 22)
   
   
@@ -2121,18 +2130,23 @@ plot_rda_climate_ms <- function(disturbance_sensitivity, disturbance_sensitivity
       ggplot(aes(x = index, y = p, group = 1)) + 
       geom_errorbar(aes(ymin = p_025, ymax = p_975), width = 0, color = "#343A40") +
       geom_point(size = 2, shape = 21, fill = disturbance.index$color[j], color = "#343A40") + 
-      geom_line(data = data.fit.j, aes(y = fit), inherit.aes = TRUE, color = disturbance.index$color[j]) + 
-      geom_ribbon(data = data.fit.j, aes(ymin = fit.inf, ymax = fit.sup), 
-                  alpha = 0.5, fill = disturbance.index$color[j], inherit.aes = TRUE) +
       xlab(disturbance.index$name[j]) + 
       ylab(paste0("Sensitivity to ", disturbance.index$disturbance[j])) +
       theme(panel.background = element_rect(color = "black", fill = "white"), 
             panel.grid = element_blank(), 
-            plot.title = element_text(size = 20), 
+            plot.title = element_text(size = 17, face = "italic"), 
             axis.title = element_text(size = 17)) + 
       scale_y_continuous(breaks = c(0:5)*0.2) + 
       ggtitle(paste0("F = ", round(anova(model.j)[1, 4], digits = 1), ", ",
                      scales::pvalue(anova(model.j)[1, 5], add_p = TRUE, accuracy = 0.01)))
+    
+    # Add line and confidence interval only if the regression is significant
+    if(anova(model.j)[1, 5] <= 0.05){
+      plot.j <- plot.j  + 
+        geom_line(data = data.fit.j, aes(y = fit), inherit.aes = TRUE, color = disturbance.index$color[j]) + 
+        geom_ribbon(data = data.fit.j, aes(ymin = fit.inf, ymax = fit.sup), 
+                    alpha = 0.5, fill = disturbance.index$color[j], inherit.aes = TRUE)
+    }
     # Add to the output list
     eval(parse(text = paste0("plots.disturbance$", disturbance.index$index[j], " <- plot.j")))
   }
@@ -2193,14 +2207,14 @@ plot_rda_climate_ms <- function(disturbance_sensitivity, disturbance_sensitivity
     ylab(paste0("PCA2 (", round(summary(pca)$importance[2, 2]*100, digits = 2), "%)")) +
     theme(panel.background = element_rect(color = "black", fill = "white"), 
           panel.grid = element_blank(), 
-          axis.title = element_text(size = 20))
+          axis.title = element_text(size = 17))
   
   
   # Final plot
-  plot.out <- plot_grid(plot.rda, 
+  plot.out <- plot_grid(plot.rda, (ggplot() + theme_void()),
                         plot_grid(plot.pca, plot.distIndex, align = "hv", nrow = 1, scale = c(0.75, 1),
                                   rel_widths = c(0.45, 1), labels = c("(c)", "(d)"), label_size = 22), 
-                        nrow = 2, labels = c("", ""))
+                        nrow = 3, rel_heights = c(1, 0.15, 1))
   
   # Save the plot
   ggsave(file.in, plot.out, width = 35, height = 20, units = "cm", dpi = 600, bg = "white")
@@ -2208,7 +2222,6 @@ plot_rda_climate_ms <- function(disturbance_sensitivity, disturbance_sensitivity
   return(file.in)
   
 }
-
 
 
 #' Plot correlation matrix between the sensitivity to each disturbance
@@ -2578,6 +2591,54 @@ plot_param_per_species_ms <- function(jags.model, data_jags, data_model,
 
 
 
+
+#' Plot the location of each plot and the nature of the disturbance
+#' @param FUNDIV_plot Plot table formatted for FUNDIV
+#' @param FUNDIV_plot_bis Plot table formatted for FUNDIV with only biotic and snow
+#' @param file.in Path and file where to save the plot
+map_disturbances_ms <- function(FUNDIV_plot, FUNDIV_plot_bis, file.in){
+  
+  ## - Create directories if needed
+  create_dir_if_needed(file.in)
+  
+  ## - Format data for plotting
+  data <- FUNDIV_plot %>%
+    filter(!(plotcode %in% FUNDIV_plot_bis$plotcode)) %>%
+    rbind(FUNDIV_plot_bis) %>%
+    filter(disturbance.nature %in% c("biotic", "storm", "snow", "fire", "other")) %>%
+    mutate(disturbance = factor(disturbance.nature, 
+                                levels = c("biotic", "fire", "other", "snow", "storm"))) %>%
+    dplyr::select(plotcode, latitude, longitude, disturbance)  %>%
+    st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant")
+  
+  
+  ## - Final plot
+  plot.out <- ne_countries(scale = "medium", returnclass = "sf") %>%
+    mutate(keep = ifelse(sovereignt %in% c("France", "Spain", "Finland"), "yes", "no")) %>%
+    ggplot(aes(geometry = geometry)) +
+    geom_sf(aes(fill = keep), color = "white", show.legend = F) + 
+    scale_fill_manual(values = c("#8D99AE", "#343A40")) +
+    geom_sf(data = data, shape = 16, aes(color = disturbance), size = 1.3) +
+    scale_color_manual(values = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")) +
+    coord_sf(xlim = c(-10, 32), ylim = c(36, 71)) +
+    guides(fill = FALSE, 
+           colour = guide_legend(override.aes = list(size=12))) +
+    annotation_scale(location = "br", width_hint = 0.2) + 
+    theme(panel.background = element_rect(color = 'black', fill = 'white'), 
+          panel.grid = element_blank(),
+          axis.text = element_text(size = 35),
+          legend.text = element_text(size = 45),
+          legend.title = element_blank(),
+          legend.position = c(0.1, 0.9), 
+          legend.key = element_blank())
+  
+  ## - save the plot
+  ggsave(file.in, plot.out, width = 33.8, height = 42.9, units = "cm", dpi = 600, bg = "white")
+  return(file.in)
+  
+}
+
+
 #' Plot senstivity to all disturbances against traits on one multipanel
 #' @param traits dataset containing trait values per species
 #' @param traits_TRY dataset containing trait values per species from TRY
@@ -2621,7 +2682,8 @@ plot_traits_vs_sensitivity_ms <- function(traits, traits_TRY, disturbance_sensit
       "SLA" = "TRY_leaf.sla_mm2mg-1", 
       "Leaf thickness" = "TRY_leaf.thickness_mm", 
       "Lifespan" = "TRY_plant.lifespan_year", 
-      "Stomata conductance" = "TRY_stomata.conductance_millimolm-2s-1"
+      "Stomata conductance" = "TRY_stomata.conductance_millimolm-2s-1", 
+      "Maximum growth" = "growth.max"
     )
   
   
@@ -2688,55 +2750,8 @@ plot_traits_vs_sensitivity_ms <- function(traits, traits_TRY, disturbance_sensit
   plot.out <- plot_grid(plotlist = plots.out, align = "hv", nrow = 1, scale = 0.9)
   
   # Save the plot
-  ggsave(file.in, plot.out, width = 20, height = 7, units = "cm", dpi = 600, bg = "white")
+  ggsave(file.in, plot.out, width = 28, height = 7, units = "cm", dpi = 600)
   
-  return(file.in)
-  
-}
-
-
-#' Plot the location of each plot and the nature of the disturbance
-#' @param FUNDIV_plot Plot table formatted for FUNDIV
-#' @param FUNDIV_plot_bis Plot table formatted for FUNDIV with only biotic and snow
-#' @param file.in Path and file where to save the plot
-map_disturbances_ms <- function(FUNDIV_plot, FUNDIV_plot_bis, file.in){
-  
-  ## - Create directories if needed
-  create_dir_if_needed(file.in)
-  
-  ## - Format data for plotting
-  data <- FUNDIV_plot %>%
-    filter(!(plotcode %in% FUNDIV_plot_bis$plotcode)) %>%
-    rbind(FUNDIV_plot_bis) %>%
-    filter(disturbance.nature %in% c("biotic", "storm", "snow", "fire", "other")) %>%
-    mutate(disturbance = factor(disturbance.nature, 
-                                levels = c("biotic", "fire", "other", "snow", "storm"))) %>%
-    dplyr::select(plotcode, latitude, longitude, disturbance)  %>%
-    st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant")
-  
-  
-  ## - Final plot
-  plot.out <- ne_countries(scale = "medium", returnclass = "sf") %>%
-    mutate(keep = ifelse(sovereignt %in% c("France", "Spain", "Finland"), "yes", "no")) %>%
-    ggplot(aes(geometry = geometry)) +
-    geom_sf(aes(fill = keep), color = "white", show.legend = F) + 
-    scale_fill_manual(values = c("#8D99AE", "#343A40")) +
-    geom_sf(data = data, shape = 16, aes(color = disturbance), size = 1.5) +
-    scale_color_manual(values = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")) +
-    coord_sf(xlim = c(-10, 32), ylim = c(36, 71)) +
-    guides(fill = FALSE, 
-           colour = guide_legend(override.aes = list(size=12))) +
-    annotation_scale(location = "br", width_hint = 0.2) + 
-    theme(panel.background = element_rect(color = 'black', fill = 'white'), 
-          panel.grid = element_blank(),
-          axis.text = element_text(size = 35),
-          legend.text = element_text(size = 45),
-          legend.title = element_blank(),
-          legend.position = c(0.2, 0.9), 
-          legend.key = element_blank())
-  
-  ## - save the plot
-  ggsave(file.in, plot.out, width = 33.8, height = 42.9, units = "cm", dpi = 600, bg = "white")
   return(file.in)
   
 }

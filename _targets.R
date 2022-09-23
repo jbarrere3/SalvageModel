@@ -154,8 +154,8 @@ list(
   
   ## - Compile traits data
   tar_target(traits_TRY, compile_traits_TRY(TRY_file, get_species_list(data_model))),
-  tar_target(traits, compile_traits(wood.density_file, shade.tolerance_file, root.depth_file, 
-                                    FUNDIV_tree, bark.thickness_file, get_species_list(data_model))), 
+  tar_target(traits, compile_traits(wood.density_file, shade.tolerance_file, root.depth_file, FUNDIV_tree, 
+                                    FUNDIV_plot, bark.thickness_file, get_species_list(data_model))), 
   
   
   ##  Make trait by trait regressions

@@ -610,13 +610,11 @@ export_trait_result_latex <- function(traits, traits_TRY, disturbance_sensitivit
       "Root mass frac." = "Root_mass_fraction", 
       "Bark thick." = "bark.thickness_mm", 
       "H/dbh ratio" = "height.dbh.ratio", 
-      "Leaf C/N" = "TRY_leaf.CN.ratio_g.cm3", 
-      "Leaf N/P" = "TRY_leaf.NP.ratio_g.cm3", 
-      "Leaf Nmass" = "TRY_leaf.N.mass_mg.g", 
-      "Leaf Pmass" = "TRY_leaf.P.mass_mg.g", 
-      "SLA" = "TRY_leaf.sla_mm2mg-1", 
-      "Leaf thick." = "TRY_leaf.thickness_mm", 
       "Lifespan" = "TRY_plant.lifespan_year", 
+      "Max. growth" = "growth.max", 
+      "Leaf C/N" = "TRY_leaf.CN.ratio_g.cm3", 
+      "Leaf Nmass" = "TRY_leaf.N.mass_mg.g", 
+      "Leaf thick." = "TRY_leaf.thickness_mm", 
       "Stomata cond." = "TRY_stomata.conductance_millimolm-2s-1"
     )
   
@@ -727,19 +725,17 @@ export_trait_allDist_latex <- function(traits, traits_TRY, disturbance_sensitivi
     left_join(traits_TRY, by = "species") %>%
     dplyr::select(
       "species", 
-      "Wood density" = "wood.density_g.cm3", 
-      "Shade tolerance" = "shade.tolerance", 
-      "Root mass fraction" = "Root_mass_fraction", 
-      "Bark thickness" = "bark.thickness_mm", 
-      "H to dbh ratio" = "height.dbh.ratio", 
-      "Leaf CN ratio" = "TRY_leaf.CN.ratio_g.cm3", 
-      "Leaf NP ratio" = "TRY_leaf.NP.ratio_g.cm3", 
-      "Leaf Nmass" = "TRY_leaf.N.mass_mg.g", 
-      "Leaf Pmass" = "TRY_leaf.P.mass_mg.g", 
-      "SLA" = "TRY_leaf.sla_mm2mg-1", 
-      "Leaf thickness" = "TRY_leaf.thickness_mm", 
+      "Wood dens." = "wood.density_g.cm3", 
+      "Shade tol." = "shade.tolerance", 
+      "Root mass frac." = "Root_mass_fraction", 
+      "Bark thick." = "bark.thickness_mm", 
+      "H/dbh ratio" = "height.dbh.ratio", 
       "Lifespan" = "TRY_plant.lifespan_year", 
-      "Stomata conductance" = "TRY_stomata.conductance_millimolm-2s-1"
+      "Max. growth" = "growth.max", 
+      "Leaf C/N" = "TRY_leaf.CN.ratio_g.cm3", 
+      "Leaf Nmass" = "TRY_leaf.N.mass_mg.g", 
+      "Leaf thick." = "TRY_leaf.thickness_mm", 
+      "Stomata cond." = "TRY_stomata.conductance_millimolm-2s-1"
     )
   
   # Center and scale the trait values
@@ -828,14 +824,38 @@ export_jags <- function(jags.model.in, data_jags.in, file.in){
 
 
 
+#' Calculate the maximum growth for each species
+#' @param FUNDIV_tree Tree-level data formatted for FUNDIV
+#' @param FUNDIV_plot Plot-level data formatted for FUNDIV
+#' @param species.in Character vector of all species for which to get the Gmax data
+get_gmax <- function(FUNDIV_tree, FUNDIV_plot, species.in){
+  
+  FUNDIV_tree %>%
+    # Add years between surveys
+    left_join(FUNDIV_plot[, c("plotcode", "yearsbetweensurveys")], by = "plotcode") %>%
+    # Only keep alive trees
+    filter(treestatus == 2) %>%
+    # Calculate annual growth rate
+    mutate(Gr = (dbh2 - dbh1)/yearsbetweensurveys) %>%
+    # Remove NA
+    filter(!is.na(Gr)) %>%
+    # Only keep the species in the species list
+    filter(species %in% species.in) %>%
+    # Calculate upper bound of the 95% confidence interval
+    group_by(species) %>%
+    summarize(growth.max = quantile(Gr, probs = 0.975))
+  
+}
+
 
 #' Compile all traits data
 #' @param bark.thickness_file file containing data on bark thickness
 #' @param wood.density_file file containing data on wood density
 #' @param FUNDIV_tree original tree dataset (to get height diameter ratio)
+#' @param FUNDIV_plot Plot-level data formatted for FUNDIV
 #' @param species.in character vector of all the species for which to extract the data
 compile_traits <- function(wood.density_file, shade.tolerance_file, root.depth_file, 
-                           FUNDIV_tree, bark.thickness_file, species.in){
+                           FUNDIV_tree, FUNDIV_plot, bark.thickness_file, species.in){
   
   # Wood density (Chave et al. 2008 + Dryad to quote)
   wood.density <- read_xls(wood.density_file, sheet = "Data")
@@ -874,6 +894,9 @@ compile_traits <- function(wood.density_file, shade.tolerance_file, root.depth_f
                                         height.dbh.ratio = as.numeric(coefficients(model.sp)[2])))
   }
   
+  # Maximum growth
+  max.growth.data <- get_gmax(FUNDIV_tree, FUNDIV_plot, species.in)
+  
   # Global trait dataset
   traits <- data.frame(species = species.in) %>%
     # Add wood density
@@ -888,7 +911,9 @@ compile_traits <- function(wood.density_file, shade.tolerance_file, root.depth_f
     # Add root depth
     left_join(root.depth, by = "species") %>%
     # Add height dbh ratio
-    left_join(height.dbh.ratio.data, by = "species")
+    left_join(height.dbh.ratio.data, by = "species") %>%
+    # Add maximum growth
+    left_join(max.growth.data, by = "species")
   
   return(traits)
 }

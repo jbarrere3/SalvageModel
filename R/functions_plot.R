@@ -2750,7 +2750,7 @@ plot_traits_vs_sensitivity_ms <- function(traits, traits_TRY, disturbance_sensit
   plot.out <- plot_grid(plotlist = plots.out, align = "hv", nrow = 1, scale = 0.9)
   
   # Save the plot
-  ggsave(file.in, plot.out, width = 28, height = 7, units = "cm", dpi = 600)
+  ggsave(file.in, plot.out, width = 28, height = 7, units = "cm", dpi = 600, bg = "white")
   
   return(file.in)
   

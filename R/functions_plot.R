@@ -2846,6 +2846,156 @@ map_disturbance_intensity_ms <- function(jags.model, data_jags, FUNDIV_plot, fil
   
 }
 
+
+#' Plot trends in disturbance frequency
+#' @param FUNDIV_plot plot table formatted for FUNDIV with biotic and snow in other category
+#' @param FUNDIV_plot_bis plot table formatted for FUNDIV with biotic and snow only
+#' @param file.in Name of the file too save (including path)
+plot_trend_disturbance_frequency_ms <- function(FUNDIV_plot, FUNDIV_plot_bis, file.in){
+  
+  ## - Create directory if needed
+  create_dir_if_needed(file.in)
+  
+  ## - Merge FUNDIV plot table to have biotic and snow as separate disturbance categories
+  FUNDIV_plot.in <- FUNDIV_plot %>%
+    filter(!(plotcode %in% FUNDIV_plot_bis$plotcode)) %>%
+    rbind.data.frame(FUNDIV_plot_bis)
+  
+  ## - Arrange the data for plotting
+  data <- FUNDIV_plot.in %>%
+    # Removee unknown disturbances
+    filter(!is.na(disturbance.nature)) %>%
+    # Only keep france and spain (not enough temporal variation in Finland)
+    filter(country %in% c("France", "Spain")) %>%
+    # Calculate the median year for the sampling of each plot
+    mutate(medianyear = floor((surveydate1 + surveydate2)/2)) %>%
+    # Calculate the number of ocurrence of each disturbance per year and country
+    group_by(country, medianyear, disturbance.nature) %>%
+    summarize(n.plots = n()) %>%
+    # Convert into a proportion and remove cases with no disturbances
+    ungroup() %>% group_by(country, medianyear) %>%
+    mutate(proportion.plots = n.plots/sum(n.plots, na.rm = TRUE), 
+           total.plots.per.year = sum(n.plots, na.rm = TRUE)) %>%
+    ungroup() %>%
+    filter(disturbance.nature != "none") %>%
+    dplyr::select(-n.plots) %>%
+    filter(total.plots.per.year > 1000) %>%
+    # Convert disturbance in factor to control the order in the plot
+    mutate(disturbance.nature = factor(
+      disturbance.nature, levels = c("biotic", "fire", "other", "snow", "storm"))) %>%
+    # Convert in an annual proportion by dividing by the number of year between surveys
+    mutate(proportion.plots = ifelse(country == "France", proportion.plots/5, proportion.plots/10))
+  
+  ## - Data to add the number of plots above each bar in the plot
+  data.label <- data %>%
+    ungroup() %>% group_by(country, medianyear) %>%
+    summarize(n = mean(total.plots.per.year), 
+              proportion.plots = sum(proportion.plots) + 0.0003) %>%
+    mutate(disturbance.nature = NA, label = paste0("(", n, ")"))
+  
+  ## - Plot proportion of disturbed plots
+  plot.out <- data %>%
+    ggplot(aes(x = as.factor(medianyear), y = proportion.plots*100, fill = disturbance.nature))  +
+    geom_bar(stat="identity", color = "black", alpha = 0.65) +
+    scale_fill_manual(values = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")) +
+    facet_grid(. ~ country, scales = "free_x", space = "free") + 
+    xlab("Median year between census 1 and 2") + ylab("Annual proportion of plots disturbed (%)") +
+    geom_text(data = data.label, aes(label = label), inherit.aes = TRUE, size = 2.5) +
+    theme(panel.background = element_rect(color = "black", fill = "white"), 
+          panel.grid = element_blank(), 
+          strip.background = element_blank(), 
+          strip.text = element_text(size = 18),
+          axis.title = element_text(size = 15),
+          legend.title = element_blank(), 
+          legend.text = element_text(size = 15),
+          panel.spacing = unit(2, "lines"), 
+          axis.text.x = element_text(angle = 360))
+  
+  ## - Save the plot
+  ggsave(file.in, plot.out, width = 19, height = 12, units = "cm", dpi = 600, bg = "white")
+  return(file.in)
+}
+
+
+
+#' Plot trends in disturbance severity
+#' @param FUNDIV_tree tree table formatted for FUNDIV
+#' @param FUNDIV_plot plot table formatted for FUNDIV with biotic and snow in other category
+#' @param FUNDIV_plot_bis plot table formatted for FUNDIV with biotic and snow only
+#' @param file.in Name of the file too save (including path)
+plot_trend_disturbance_severity_ms <- function(FUNDIV_tree, FUNDIV_plot, 
+                                               FUNDIV_plot_bis, file.in){
+  
+  ## - Create directory if needed
+  create_dir_if_needed(file.in)
+  
+  ## - Merge FUNDIV plot table to have biotic and snow as separate disturbance categories
+  FUNDIV_plot.in <- FUNDIV_plot %>%
+    filter(!(plotcode %in% FUNDIV_plot_bis$plotcode)) %>%
+    rbind.data.frame(FUNDIV_plot_bis)
+  
+  ## - Arrange data to study changes in disturbance severity
+  data.severity <- FUNDIV_plot.in %>%
+    # Only keep disturbed plots
+    filter(disturbance.nature %in% c("biotic", "fire", "other", "snow", "storm")) %>%
+    # Only keep france and spain (not enough temporal variation in Finland)
+    filter(country %in% c("France", "Spain")) %>%
+    # Calculate the median year for the sampling of each plot
+    mutate(medianyear = floor((surveydate1 + surveydate2)/2)) %>%
+    # Join severity per plot
+    left_join((FUNDIV_tree %>%
+                 filter(treestatus != 1) %>%
+                 filter(dbh1 > 100) %>%
+                 mutate(dead = ifelse(treestatus == 2, 0, 1)) %>%
+                 group_by(plotcode) %>%
+                 summarize(severity = sum(dead)/n())), 
+              by = "plotcode") %>%
+    # Remove null severities
+    filter(severity > 0) %>%
+    # Calculate annual severity by dividing by the time interval between two studies
+    mutate(severity.annual = severity/yearsbetweensurveys) %>%
+    # Calculate mean and confidence interval per year, disturbance and country
+    ungroup() %>%
+    group_by(country, medianyear, disturbance.nature) %>%
+    summarize(severity.mean = mean(severity.annual), 
+              severity.low = quantile(severity.annual, probs = 0.025), 
+              severity.high = quantile(severity.annual, probs = 0.975),
+              n = n()) %>%
+    # Add label and label position
+    mutate(label = paste0("(", n, ")")) %>%
+    # Convert disturbance in factor to control the order in the plot
+    mutate(disturbance.nature = factor(
+      disturbance.nature, levels = c("biotic", "fire", "other", "snow", "storm")))
+  
+  ## - Plot trends in disturbance severity
+  plot.out <- data.severity %>%
+    ggplot(aes(x = as.factor(medianyear), y = severity.mean, color = disturbance.nature))  +
+    geom_point() +
+    geom_errorbar(aes(ymin = severity.low, ymax = severity.high), width = 0) + 
+    scale_color_manual(values = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")) +
+    facet_grid(disturbance.nature ~ country, scales = "free_x", space = "free") + 
+    xlab("Median year between census 1 and 2") + ylab("Mean severity") +
+    geom_text(aes(label = label, y = severity.high), size = 2.5, nudge_y = 0.05) +
+    theme(panel.background = element_rect(color = "black", fill = "white"), 
+          panel.grid = element_blank(), 
+          strip.background = element_blank(), 
+          strip.text.y = element_blank(),
+          strip.text = element_text(size = 18),
+          axis.title = element_text(size = 15),
+          legend.title = element_blank(), 
+          legend.key = element_blank(),
+          legend.text = element_text(size = 15),
+          panel.spacing = unit(1, "lines"), 
+          axis.text.x = element_text(angle = 90))
+  
+  ## - Save the plot
+  ggsave(file.in, plot.out, width = 16, height = 16, units = "cm", dpi = 600, bg = "white")
+  return(file.in)
+}
+
+
+
+
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## Outdated functions ------------
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

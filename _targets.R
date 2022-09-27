@@ -268,6 +268,12 @@ list(
     method = "mean.proba", "output/fig/ms/validation.png"), 
     format = "file"),
   
+  # Trends in disturbance frequency and severity
+  tar_target(fig_trend_frequency, plot_trend_disturbance_frequency_ms(
+    FUNDIV_plot,FUNDIV_plot_bis, "output/fig/ms/dist_freq_trend.jpg"), format = "file"), 
+  tar_target(fig_trend_severity, plot_trend_disturbance_severity_ms(
+    FUNDIV_tree, FUNDIV_plot, FUNDIV_plot_bis, "output/fig/ms/dist_sever_trend.jpg"), format = "file"),
+  
   
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

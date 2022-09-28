@@ -2994,6 +2994,138 @@ plot_trend_disturbance_severity_ms <- function(FUNDIV_tree, FUNDIV_plot,
 }
 
 
+#' Plot the effect of traits on disturbance sensitivity
+#' @param traits dataframe containing trait values per species
+#' @param traits_TRY dataframe containing trait values from TRY per species
+#' @param disturbance_sensivity dataframe containing the sensitivity to each disturbance
+#' @param disturbance_sensivity_bis dataframe containing the sensitivity to biotic and snow
+#' @param species Table containing species information
+#' @param group.in character indicating which species to include ("all", "conifer" or "broadleaf")
+#' @param file.in Name of the file to save
+plot_trait_effect_ms <- function(traits, traits_TRY, disturbance_sensitivity, disturbance_sensitivity_bis, 
+                                 species, group.in = "all", file.in){
+  
+  # Create dir if needed
+  create_dir_if_needed(file.in)
+  
+  # merge disturbance sensitivity 
+  disturbance_sensitivity.in <- c(disturbance_sensitivity, disturbance_sensitivity_bis[c("biotic", "snow")])
+  
+  # Identify the disturbances
+  disturbances.in <- names(disturbance_sensitivity.in)
+  
+  # Rearrange traits table
+  traits.in <- traits %>%
+    left_join(traits_TRY, by = "species") %>%
+    dplyr::select(
+      "species", 
+      "Wood dens." = "wood.density_g.cm3", 
+      "Shade tol." = "shade.tolerance", 
+      "Root mass frac." = "Root_mass_fraction", 
+      "Bark thick." = "bark.thickness_mm", 
+      "H/dbh ratio" = "height.dbh.ratio", 
+      "Lifespan" = "TRY_plant.lifespan_year", 
+      "Max. growth" = "growth.max", 
+      "Leaf C/N" = "TRY_leaf.CN.ratio_g.cm3", 
+      "Leaf Nmass" = "TRY_leaf.N.mass_mg.g", 
+      "Leaf thick." = "TRY_leaf.thickness_mm", 
+      "Stomata cond." = "TRY_stomata.conductance_millimolm-2s-1"
+    )
+  
+  # Identify the species to select depending on the group 
+  species.to.select <- (species %>%
+                          mutate(group.in = group.in) %>%
+                          mutate(keep = case_when(group.in == "conifer" ~ ifelse(group == "Gymnosperms", 1, 0), 
+                                                  group.in == "broadleaf" ~ ifelse(group == "Angiosperms", 1, 0), 
+                                                  group.in == "all" ~ 1)) %>%
+                          filter(keep == 1))$species
+  
+  # And filter trait table
+  traits.in <- traits.in %>% filter(species %in% species.to.select)
+  
+  # Center and scale the trait values
+  traits.in <- scale_data_model(traits.in, var = colnames(traits.in)[c(2:dim(traits.in)[2])])
+  
+  # Loop on all traits
+  for(i in 1:(dim(traits.in)[2] - 1)){
+    # Identify the name of trait i
+    trait.i <- colnames(traits.in)[i+1]
+    # Create a table with only species and trait i
+    traits.i <- traits.in %>% dplyr::select("species", "trait" = trait.i)
+    # Loop on all type of disturbances
+    for(j in 1:length(disturbances.in)){
+      # Create a table with trait i and sensitivity to disturbance j
+      data.ij <- traits.i %>%
+        left_join((disturbance_sensitivity.in[[j]] %>%
+                     mutate(sensitivity.logit = log(p/(1 - p)), 
+                            w = 1/(p_975 - p_025))), 
+                  by = "species") %>%
+        drop_na()
+      # Only perform a test if there is enough data
+      if(dim(data.ij)[1] > 2){
+        # Fit a model
+        model.ij <- lm(sensitivity.logit ~ trait, weights = w, data = data.ij)
+        # Results
+        table.ij <- data.frame(
+          trait = trait.i, 
+          disturbance = disturbances.in[j],
+          n = dim(data.ij)[1],
+          Est = summary(model.ij)$coefficients[2, 1], 
+          Est.se = summary(model.ij)$coefficients[2, 2], 
+          p = anova(model.ij)[1, 5]
+        )
+      }else{table.ij <- data.frame(trait = trait.i, disturbance = disturbances.in[j],
+                                   n = NA_real_, Est = NA_real_, Est.se = NA_real_, p = 1)}
+      
+      
+      # Add to the list containing the final results
+      if(i == 1 & j == 1) data <- table.ij
+      else data <- rbind.data.frame(data, table.ij)
+    }
+  }
+  
+  # Add categories for each trait
+  data <- data %>%
+    mutate(trait.category = case_when(
+      trait %in% c("Wood dens.", "Lifespan", "Max. growth") ~ "Growth vs.\n  survival", 
+      trait %in% c("Leaf thick.", "Stomata cond.") ~ "Drought \n traits", 
+      trait %in% c("Leaf C/N", "Leaf Nmass") ~ "Growth vs.\n defense", 
+      TRUE ~ "Other\ntraits"
+    ), 
+    significance = ifelse(p <= 0.05, "*", ""), 
+    label = paste0("(", n, ") ", significance))
+  
+  ## - Make the plot
+  plot.out <- data %>%
+    mutate(disturbance = factor(disturbance, levels = c("storm", "fire", "other", "biotic",  "snow"))) %>%
+    ggplot(aes(x = trait, y = Est, color = disturbance)) + 
+    geom_point() + 
+    geom_errorbar(aes(ymin = Est - Est.se, ymax = Est + Est.se), width = 0) + 
+    geom_hline(yintercept = 0, color = "black", linetype = "dashed") + 
+    facet_grid(trait.category ~ disturbance, scales = "free_y", space = "free_y") +
+    geom_text(aes(label = label, y = Est + Est.se), size = 2.5, nudge_y = 3, show.legend = F) +
+    # geom_text(aes(label = paste0("(", n, ")"), y = Est + Est.se), size = 2.5, nudge_y = 1, show.legend = F) +
+    # geom_text(aes(label = significance, y = Est + Est.se), size = 5, nudge_y = 2, show.legend = F) +
+    scale_color_manual(values = c("#4361EE", "#F77F00", "#5F0F40", "#90A955", "#006D77")) +
+    xlab("") + ylab("Trait effect on disturbance sensitivity") +
+    theme(panel.background = element_rect(color = "black", fill = "white"), 
+          panel.grid = element_blank(), 
+          strip.background = element_blank(), 
+          strip.text.x = element_text(size = 13),
+          strip.text.y = element_text(size = 13, angle = 360),
+          axis.title = element_text(size = 15),
+          legend.position = "none",
+          axis.text.x = element_text(size = 10, angle = 360),
+          axis.text.y = element_text(size = 10, angle = 360)) + 
+    coord_flip()
+  
+  ## - Save the plot
+  ggsave(file.in, plot.out, width = 23, height = 9, units = "cm", dpi = 600, bg = "white")
+  return(file.in)
+  
+}
+
+
 
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

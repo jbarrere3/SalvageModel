@@ -274,6 +274,17 @@ list(
   tar_target(fig_trend_severity, plot_trend_disturbance_severity_ms(
     FUNDIV_tree, FUNDIV_plot, FUNDIV_plot_bis, "output/fig/ms/dist_sever_trend.jpg"), format = "file"),
   
+  # Effect of traits on sensitivity
+  tar_target(fig_trait_effect_allsp_ms, plot_trait_effect_ms(
+    traits, traits_TRY, disturbance_sensitivity, disturbance_sensitivity_bis, 
+    species, group.in = "all", "output/fig/ms/trait_effect_all.jpg"), format = "file"),
+  tar_target(fig_trait_effect_broadleaf_ms, plot_trait_effect_ms(
+    traits, traits_TRY, disturbance_sensitivity, disturbance_sensitivity_bis, 
+    species, group.in = "broadleaf", "output/fig/ms/trait_effect_broadleaf.jpg"), format = "file"),
+  tar_target(fig_trait_effect_conifer_ms, plot_trait_effect_ms(
+    traits, traits_TRY, disturbance_sensitivity, disturbance_sensitivity_bis, 
+    species, group.in = "conifer", "output/fig/ms/trait_effect_conifer.jpg"), format = "file"),
+  
   
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

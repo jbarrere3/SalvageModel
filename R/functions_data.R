@@ -73,6 +73,13 @@ format_data_model <- function(FUNDIV_tree, FUNDIV_plot, Climate, species){
     filter(treestatus != 1) %>%
     # Remove recruited trees that died
     filter(dbh1 > 100) %>%
+    # Remove plots with null severity
+    mutate(dead = ifelse(treestatus == 2, 0, 1)) %>%
+    group_by(plotcode) %>%
+    mutate(dead.sum = sum(dead)) %>%
+    filter(dead.sum > 0) %>%
+    ungroup() %>%
+    dplyr::select(-dead, -dead.sum) %>%
     # Add species information
     left_join((species %>% dplyr::select(species, group)), by = "species")
   

@@ -2746,11 +2746,27 @@ plot_traits_vs_sensitivity_ms <- function(traits, traits_TRY, disturbance_sensit
     }
   }
   
+  # Create a legend for the plot
+  plot.legend <- cowplot::get_legend(
+    data.frame(x = c(1:5), y = c(1:5), ymin = c(0:4), ymax = c(2:6), 
+               disturbance = factor(c("storm", "fire", "other", "biotic", "snow"), 
+                                    levels = c("storm", "fire", "other", "biotic", "snow"))) %>%
+      ggplot(aes(x = x, y = y, color = disturbance)) + 
+      geom_point() + 
+      geom_errorbar(aes(ymin = ymin, ymax = ymax), width = 0) + 
+      scale_color_manual(values = c("#4361EE", "#F77F00", "#5F0F40", "#90A955", "#006D77")) + 
+      theme(legend.title = element_blank(), 
+            legend.key = element_blank(), 
+            legend.text = element_text(size = 19)))
+    
   # Final plot
-  plot.out <- plot_grid(plotlist = plots.out, align = "hv", nrow = 1, scale = 0.9)
+  plot.out <- plot_grid(
+    plot_grid(plotlist = plots.out, align = "hv", nrow = 2, scale = 0.9), 
+    plot.legend, nrow = 1, rel_widths = c(1, 0.25)
+  )
   
   # Save the plot
-  ggsave(file.in, plot.out, width = 28, height = 7, units = "cm", dpi = 600)
+  ggsave(file.in, plot.out, width = 21, height = 14, units = "cm", dpi = 600)
   
   return(file.in)
   

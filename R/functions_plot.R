@@ -2916,7 +2916,7 @@ plot_trait_effect_ms <- function(traits, traits_TRY, disturbance_sensitivity, di
                   by = "species") %>%
         drop_na()
       # Only perform a test if there is enough data
-      if(dim(data.ij)[1] > 2){
+      if(dim(data.ij)[1] > 3){
         # Fit a model
         model.ij <- lm(sensitivity.logit ~ trait, weights = w, data = data.ij)
         # Results
@@ -2926,10 +2926,13 @@ plot_trait_effect_ms <- function(traits, traits_TRY, disturbance_sensitivity, di
           n = dim(data.ij)[1],
           Est = summary(model.ij)$coefficients[2, 1], 
           Est.se = summary(model.ij)$coefficients[2, 2], 
+          Est.sup = confint.lm(model.ij)[2, 2], 
+          Est.inf = confint.lm(model.ij)[2, 1],
           p = anova(model.ij)[1, 5]
         )
       }else{table.ij <- data.frame(trait = trait.i, disturbance = disturbances.in[j],
-                                   n = NA_real_, Est = NA_real_, Est.se = NA_real_, p = 1)}
+                                   n = NA_real_, Est = NA_real_, Est.se = NA_real_, 
+                                   Est.sup = NA_real_, Est.inf = NA_real_, p = 1)}
       
       
       # Add to the list containing the final results
@@ -2947,19 +2950,18 @@ plot_trait_effect_ms <- function(traits, traits_TRY, disturbance_sensitivity, di
       TRUE ~ "Other\ntraits"
     ), 
     significance = ifelse(p <= 0.05, "*", ""), 
-    label = paste0("(", n, ") ", significance))
+    label = ifelse(n > 3, paste0("(", n, ") ", significance), ""))
   
   ## - Make the plot
   plot.out <- data %>%
     mutate(disturbance = factor(disturbance, levels = c("storm", "fire", "other", "biotic",  "snow"))) %>%
     ggplot(aes(x = trait, y = Est, color = disturbance)) + 
-    geom_point() + 
-    geom_errorbar(aes(ymin = Est - Est.se, ymax = Est + Est.se), width = 0) + 
-    geom_hline(yintercept = 0, color = "black", linetype = "dashed") + 
+    geom_hline(yintercept = 0, color = "grey", linetype = "dashed", size = 0.3) + 
+    geom_point(size = 1) + 
+    geom_errorbar(aes(ymin = Est.inf, ymax = Est.sup), width = 0) + 
     facet_grid(trait.category ~ disturbance, scales = "free_y", space = "free_y") +
-    geom_text(aes(label = label, y = Est + Est.se), size = 2.5, nudge_y = 3, show.legend = F) +
-    # geom_text(aes(label = paste0("(", n, ")"), y = Est + Est.se), size = 2.5, nudge_y = 1, show.legend = F) +
-    # geom_text(aes(label = significance, y = Est + Est.se), size = 5, nudge_y = 2, show.legend = F) +
+    geom_text(aes(label = label, y = max(data$Est.sup, na.rm = TRUE)), 
+              size = 2.5, nudge_y = 3, hjust = "inward", show.legend = F) +
     scale_color_manual(values = c("#4361EE", "#F77F00", "#5F0F40", "#90A955", "#006D77")) +
     xlab("") + ylab("Trait effect on disturbance sensitivity") +
     theme(panel.background = element_rect(color = "black", fill = "white"), 
@@ -2971,13 +2973,15 @@ plot_trait_effect_ms <- function(traits, traits_TRY, disturbance_sensitivity, di
           legend.position = "none",
           axis.text.x = element_text(size = 10, angle = 360),
           axis.text.y = element_text(size = 10, angle = 360)) + 
-    coord_flip()
+    coord_flip() + 
+    ylim(min(data$Est.inf, na.rm = T), (max(data$Est.sup, na.rm = T) + 3))
   
   ## - Save the plot
   ggsave(file.in, plot.out, width = 23, height = 9, units = "cm", dpi = 600, bg = "white")
   return(file.in)
   
 }
+
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## Outdated functions ------------

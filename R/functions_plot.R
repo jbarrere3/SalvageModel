@@ -2854,7 +2854,8 @@ map_disturbance_intensity_ms <- function(jags.model, data_jags, FUNDIV_plot, fil
   plots.out$legend <- cowplot::get_legend(plot.i + theme(legend.position = "left"))
   
   ## - Final plot
-  plot.out <- plot_grid(plotlist = plots.out, nrow = 2) 
+  plot.out <- plot_grid(plotlist = plots.out[c("storm", "fire", "other", "biotic", "snow", "legend")], 
+                        nrow = 2, labels = c("(a)", "", "", "(b)", "", "")) 
   
   ## - save the plot
   ggsave(file.in, plot.out, width = 20, height = 18, units = "cm", dpi = 600, bg = "white")

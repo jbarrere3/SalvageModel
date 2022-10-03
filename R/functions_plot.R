@@ -2086,8 +2086,13 @@ plot_rda_climate_ms <- function(disturbance_sensitivity, disturbance_sensitivity
     eval(parse(text = paste0("plots.out$", disturbances.in[i], " <- plot.i")))
   }
   
-  plot.rda <- plot_grid(plotlist = plots.out, nrow = 1, align = "hv", rel_widths = c(1.2, 1, 1, 1, 1),
-                        labels = c("(a)", "", "", "(b)", ""), label_size = 22)
+  # Add an empty plot to manage spacing between graphs
+  plots.out$empty <- ggplot() + theme_void()
+  
+  # Final rda plot
+  plot.rda <- plot_grid(plotlist = plots.out[c("storm", "fire", "other", "empty", "biotic", "snow")], nrow = 1, 
+                        align = "hv", rel_widths = c(1.2, 1, 1, 0.25, 1, 1),
+                        labels = c("(a)", "", "", "(b)", "", ""), label_size = 19)
   
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -2151,7 +2156,7 @@ plot_rda_climate_ms <- function(disturbance_sensitivity, disturbance_sensitivity
     eval(parse(text = paste0("plots.disturbance$", disturbance.index$index[j], " <- plot.j")))
   }
   # Assemble the plots
-  plot.distIndex <- plot_grid(plotlist = plots.disturbance, nrow = 1, align = "hv")
+  plot.distIndex <- plot_grid(plotlist = plots.disturbance[c("windspeed", "fwi", "swe")], nrow = 1, align = "hv")
   
   
   
@@ -2213,7 +2218,7 @@ plot_rda_climate_ms <- function(disturbance_sensitivity, disturbance_sensitivity
   # Final plot
   plot.out <- plot_grid(plot.rda, (ggplot() + theme_void()),
                         plot_grid(plot.pca, plot.distIndex, align = "hv", nrow = 1, scale = c(0.75, 1),
-                                  rel_widths = c(0.45, 1), labels = c("(c)", "(d)"), label_size = 22), 
+                                  rel_widths = c(0.45, 1), labels = c("(c)", "(d)"), label_size = 19), 
                         nrow = 3, rel_heights = c(1, 0.15, 1))
   
   # Save the plot

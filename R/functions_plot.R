@@ -2729,8 +2729,8 @@ plot_traits_vs_sensitivity_ms <- function(traits, traits_TRY, disturbance_sensit
     plot.i <- data.i %>%
       mutate(disturbance = factor(disturbance, levels = c("biotic", "fire", "other", "snow", "storm"))) %>%
       ggplot(aes(x = trait, y = p)) + 
-      geom_errorbar(aes(ymin = p_025, ymax = p_975, color =disturbance), width = 0) +
-      geom_point(size = 1, aes(color = disturbance)) + 
+      geom_errorbar(aes(ymin = p_025, ymax = p_975, color =disturbance), width = 0, alpha = 0.5) +
+      geom_point(size = 1, aes(color = disturbance), alpha = 0.5) + 
       scale_color_manual(values = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")) +
       geom_line(data = data.fit, aes(y = fit, group = 1), inherit.aes = TRUE) + 
       geom_line(data = data.fit, aes(y = fit.inf, group = 1), linetype = "dashed", inherit.aes = TRUE) + 

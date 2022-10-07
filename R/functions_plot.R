@@ -2771,7 +2771,7 @@ plot_traits_vs_sensitivity_ms <- function(traits, traits_TRY, disturbance_sensit
   )
   
   # Save the plot
-  ggsave(file.in, plot.out, width = 21, height = 14, units = "cm", dpi = 600)
+  ggsave(file.in, plot.out, width = 21, height = 14, units = "cm", dpi = 600, bg = "white")
   
   return(file.in)
   

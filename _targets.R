@@ -226,10 +226,18 @@ list(
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # -- Step 7 - Plots for the manuscript ----
   
-  # RDA VS climate
+  # Climate vs disturbance-related climatic indices
+  tar_target(fig_disturbance_climate_ms, plot_disturbance_climate_ms(
+    disturbance_sensitivity, disturbance_sensitivity_bis, gbif_disturbance_file, 
+    "output/fig/ms/sensity_vs_climate_disturbance.jpg"), format = "file"),
+  
+  # PCA of the climatic variables
+  tar_target(fig_pca_ms, plot_pca_ms(gbif_file, "output/fig/ms/pca.jpg"), format = "file"),
+  
+  # RDA of sensitivity vs climate
   tar_target(fig_rda_climate_ms, plot_rda_climate_ms(
     disturbance_sensitivity, disturbance_sensitivity_bis, gbif_file, 
-    gbif_disturbance_file, "output/fig/ms/sensitivity_vs_climate.jpg"), format = "file"), 
+    "output/fig/ms/sensitivity_vs_climate.jpg"), format = "file"), 
   
   # Make a map of disturbance intensity for model with all disturbances
   tar_target(fig_disturbance_intensity_bis.2, map_disturbance_intensity_ms(

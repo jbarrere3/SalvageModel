@@ -2866,7 +2866,10 @@ map_disturbance_intensity_ms <- function(jags.model, data_jags, FUNDIV_plot, fil
     
     # Plot for disturbance i with histogram inserted
     plot.i <- ne_countries(scale = "medium", returnclass = "sf") %>%
-      mutate(keep = ifelse(sovereignt %in% c("France", "Spain", "Finland"), "yes", "no")) %>%
+      mutate(disturbance = disturbances.in[i]) %>%
+      mutate(keep = case_when(
+        disturbance %in% c("fire", "storm", "other") ~ ifelse(sovereignt %in% c("France", "Spain", "Finland"), "yes", "no"), 
+        disturbance %in% c("biotic", "snow") ~ ifelse(sovereignt %in% c("Spain", "Finland"), "yes", "no"))) %>%
       ggplot(aes(geometry = geometry)) +
       geom_sf(aes(fill = keep), color = "white", show.legend = F, size = 0.2) + 
       scale_fill_manual(values = c("#8D99AE", "#343A40")) +

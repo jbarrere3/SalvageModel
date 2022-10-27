@@ -94,6 +94,12 @@ list(
   tar_target(disturbance_sensitivity_bis, get_disturbance_sensivity(jags.model_bis, data_jags_bis, data_model_bis, 
                                                                 dbh.ref = 250, I.ref = 0.75)), 
   
+  # Extract model prediction for every iteration
+  tar_target(disturbance_sensitivity_full, get_disturbance_sensivity_full(
+    jags.model, data_jags, data_model, dbh.ref = 250, I.ref = 0.75)), 
+  tar_target(disturbance_sensitivity_full_bis, get_disturbance_sensivity_full(
+    jags.model_bis, data_jags_bis, data_model_bis, dbh.ref = 250, I.ref = 0.75)),
+  
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # -- Step 4 - Plot model outputs ----
   

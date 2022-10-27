@@ -587,6 +587,74 @@ get_disturbance_sensivity <- function(jags.model, data_jags, data_model,
   return(out)
 }
 
+#' Get disturbance sensitivity by species for each iteration of the model
+#' @param jags.model rjags object
+#' @param data_jags input used for the jags model
+#' @param data_model Tree data formatted for the IPM.
+#' @param dbh.ref dbh value for which to predict values
+#' @param logratio.ref value of the ratio dbh/dqm for which to predict values
+#' @param I.ref disturbance intensity for which to predict values
+get_disturbance_sensivity_full <- function(jags.model, data_jags, data_model, 
+                                           dbh.ref = 300, logratio.ref = 0, I.ref = 0.5){
+  
+  # Initialize output
+  out <- list()
+  
+  # Identify disturbances 
+  disturbances.in <- names(jags.model)
+  
+  # Loop on all disturbances to extract data
+  for(i in 1:length(disturbances.in)){
+    
+    # Model to scale logratio
+    scale_logratio <- lm(logratio.scaled ~ logratio, 
+                         data = data.frame(logratio = data_model[[i]]$log_dbh_dqm, 
+                                           logratio.scaled = data_jags[[i]]$data_jags$logratio))
+    # Model to scale dbh
+    scale_dbh <- lm(dbh.scaled ~ dbh, 
+                    data = data.frame(dbh = data_model[[i]]$dbh, 
+                                      dbh.scaled = data_jags[[i]]$data_jags$dbh))
+    
+    # Parameter per species
+    param_per_species.i <- extract_param_per_species(jags.model[[i]], data_jags[[i]])
+    if(!(disturbances.in[[i]] %in% c("storm", "snow"))) param_per_species.i$a1 = NA_real_
+    param_per_species.i <- param_per_species.i %>%
+      left_join((data_model[[i]] %>%
+                   group_by(species, country) %>%
+                   summarize(weight = n())), 
+                by = c("country", "species")) %>%
+      mutate(weight = ifelse(is.na(weight), 1, weight)) %>%
+      group_by(species, iter) %>%
+      summarise(a0 = sum(a0*weight)/sum(weight), 
+                a1 = sum(a1*weight)/sum(weight), 
+                b = sum(b*weight)/sum(weight), 
+                c = sum(c*weight)/sum(weight))
+    
+    # Format data 
+    data.i <- expand.grid(species = data_jags[[i]]$species.table$species,
+                          dbh = dbh.ref, logratio = logratio.ref, I = I.ref, 
+                          iter = unique(param_per_species.i$iter), 
+                          disturbance = disturbances.in[i]) %>%
+      # Scale variables when needed
+      mutate(dbh.scaled = predict(scale_dbh, newdata = .), 
+             logratio.scaled = predict(scale_logratio, newdata = .)) %>%
+      # Add parameters per species
+      left_join(param_per_species.i, by = c("species", "iter")) %>%
+      # Compute probabilities
+      mutate(pd = case_when(disturbance %in% c("storm", "snow") ~ plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c), 
+                            TRUE ~ plogis(a0 + b*I*dbh.scaled^c)), 
+             pd = 1 - (1 - pd)^5) %>%
+      # Keep variables of interest
+      dplyr::select(species, iter, p = pd)
+    
+    # Add to the output list
+    eval(parse(text = paste0("out$", disturbances.in[i], " <- data.i")))
+  }
+  
+  # return the name of all the plots made
+  return(out)
+}
+
 #' Create a latex table with the results  of the trait models
 #' @param traits dataframe containing trait values per species
 #' @param traits_TRY dataframe containing trait values from TRY per species

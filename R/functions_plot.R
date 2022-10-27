@@ -3190,6 +3190,196 @@ plot_trait_effect_ms <- function(traits, traits_TRY, disturbance_sensitivity, di
 
 
 
+#' Function to plot results of the climate analysis for the manuscript
+#' @param gbif_file Name of the file containing climate data per species
+#' @param disturbance_sensitivity list of dataset containing disturbance sensitivity per species
+#' @param disturbance_sensitivity_bis list of dataset containing disturbance sensitivity to snow and biotic
+#' @param variables.in character indicating if explanatory var should be climate directly ("clim") or pca axis ("pca")
+#' @param weight.method character, indicates if weight in the model should be calculated based on conf. int. ("ic") or sd ("sd")
+#' @param model.type character: "reg" (regression with logit transfo) or "betareg" (with betareg package)
+#' @param file.in Where to save the plot
+plot_climate_effect_ms <- function(gbif_file, disturbance_sensitivity, disturbance_sensitivity_bis, 
+                                   variables.in = "pca", weight.method = "sd", model.type = "betareg", file.in){
+  # Create directory if needed
+  create_dir_if_needed(file.in)
+  
+  ## - Dataset to use depending on the variable chosen
+  # --- If the option chose is climate variables directly
+  if(variables.in == "clim") data.climate <- fread(gbif_file) %>% dplyr::select(species, mat, map) %>% drop_na()
+  # --- If the option chose is pca axis
+  if(variables.in == "pca"){
+    # - Make PCA 
+    pca <- prcomp((fread(gbif_file) %>%
+                     dplyr::select(species, mat, tmin, map) %>%
+                     drop_na() %>% 
+                     dplyr::select(-species)), 
+                  center = T, scale = T)
+    # - Extract the coordinates of the individuals on pca axis
+    data.climate <- data.frame(species = (fread(gbif_file) %>%
+                                            dplyr::select(species, mat, tmin, map) %>%
+                                            drop_na())$species, 
+                               pca1 = get_pca_ind(pca)[[1]][, 1], 
+                               pca2 = get_pca_ind(pca)[[1]][, 2]) 
+    
+    # - Extract the coordinates of the individuals on pca axis
+    res.ind <- data.frame(species = (fread(gbif_file) %>%
+                                       dplyr::select(species, mat, tmin, map) %>%
+                                       drop_na())$species, 
+                          pca1 = get_pca_ind(pca)[[1]][, 1], 
+                          pca2 = get_pca_ind(pca)[[1]][, 2]) %>%
+      mutate(sp = paste(substr(gsub("\\ .+", "", species), 1, 2), 
+                        substr(gsub(".+\\ ", "", species), 1, 2), 
+                        sep = "."))
+    
+    # - Extract the coordinates of the variables on pca axis
+    res.var <- data.frame(var = rownames(get_pca_var(pca)[[1]]), 
+                          pca1 = get_pca_var(pca)[[1]][, 1], 
+                          pca2 = get_pca_var(pca)[[1]][, 2])
+    
+    # - Minimum and maximum in each pca axis
+    pca.xmin <- -max(abs(res.ind$pca1))
+    pca.xmax <- max(abs(res.ind$pca1))
+    pca.ymin <- -max(abs(res.ind$pca2))
+    pca.ymax <- max(abs(res.ind$pca2))
+    
+    # Make the plot
+    plot.pca <- res.ind %>%
+      ggplot(aes(x = pca1, y = pca2)) + 
+      geom_point(fill = "#023E8A", color = "black", shape = 21) +
+      geom_text(aes(label = sp), nudge_y = 0.1, color = "#023E8A", size = 3) +
+      geom_segment(data = (res.var %>% mutate(pca1 = pca1*1.5, pca2 = pca2*1.5)), 
+                   aes(x = 0, xend = pca1, y = 0, yend = pca2), 
+                   arrow = arrow(length = unit(0.1, "cm")), 
+                   type = "closed", color = "#D90429") + 
+      geom_text(data = (res.var %>% mutate(pca1 = pca1*1.5, pca2 = pca2*1.5)), 
+                aes(label = var), color = "#D90429", size = 5, 
+                nudge_x = ifelse(res.var$pca1 < 0, pca.xmin/12, pca.xmax/12)) +
+      geom_hline(size = 0.2, yintercept = 0, color = "#6C757D", linetype = "dashed") + 
+      geom_vline(size = 0.2, xintercept = 0, color = "#6C757D", linetype = "dashed") + 
+      xlim((pca.xmin-0.2), (pca.xmax+0.2)) + 
+      ylim((pca.ymin-0.2), (pca.ymax+0.2)) +
+      xlab(paste0("PCA1 (", round(summary(pca)$importance[2, 1]*100, digits = 2), "%)")) +
+      ylab(paste0("PCA2 (", round(summary(pca)$importance[2, 2]*100, digits = 2), "%)")) +
+      theme(panel.background = element_rect(color = "black", fill = "white"), 
+            panel.grid = element_blank(), 
+            axis.title = element_text(size = 15))
+  }
+  
+  ## - Assemble the two disturbance sensitivity files
+  disturbance_sensitivity.in <- c(disturbance_sensitivity, disturbance_sensitivity_bis[c("snow", "biotic")])
+  
+  ## - Names of the disturbances
+  disturbances.in <- names(disturbance_sensitivity.in)
+  
+  # Create a vector of colors for plotting
+  color.in <- (data.frame(disturbance = disturbances.in) %>%
+                 left_join(data.frame(disturbance = c("biotic", "fire", "other", "snow", "storm"), 
+                                      color = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")), 
+                           by = "disturbance"))$color
+  
+  # Compile trait dataset
+  data.in <- data.climate %>% rename("var.1" = colnames(.)[2], "var.2" = colnames(.)[3])
+  
+  
+  ## - Initialize output
+  plots.out <- list()
+  
+  ## - Loop on all type of disturbances
+  for(i in 1:length(disturbances.in)){
+    
+    # Data to fit the model for disturbance i
+    data.i <- data.in  %>%
+      left_join(disturbance_sensitivity.in[[i]], by = "species") %>%
+      mutate(p.logit = log(p/(1 - p)), 
+             p_025.logit = log(p_025/(1 - p_025)), 
+             p_975.logit = log(p_975/(1 - p_975)), 
+             w.ic = 1/(p_975.logit - p_025.logit), 
+             w.sd = ((2*1.96)/(p_975.logit - p_025.logit))^2) %>%
+      drop_na()
+    
+    # Fit model depending on weighting method
+    if(weight.method == "ic" & model.type == "reg") model.i = lm(p.logit ~ scale(var.1) + scale(var.2), weights = w.ic, data = data.i)
+    if(weight.method == "sd" & model.type == "reg") model.i = lm(p.logit ~ scale(var.1) + scale(var.2), weights = w.sd, data = data.i)
+    if(weight.method == "ic" & model.type == "betareg" & dim(data.i)[1] > 3) {
+      model.i = betareg(p ~ scale(var.1) + scale(var.2), weights = w.ic, data = data.i, link = "logit")
+    }
+    if(weight.method == "sd" & model.type == "betareg" & dim(data.i)[1] > 3) {
+      model.i = betareg(p ~ scale(var.1) + scale(var.2), weights = w.sd, data = data.i, link = "logit")
+    }
+    
+    
+    
+    # Build result table to plot results
+    results.i <- data.frame(disturbance = disturbances.in[i],
+                            n = dim(data.i)[1],
+                            var = colnames(data.climate)[c(2, 3)])
+    if(dim(data.i)[1] > 3) results.i <- results.i %>% 
+      mutate(est.low = as.numeric(confint(model.i)[c(2, 3), 1]), 
+             est.high = as.numeric(confint(model.i)[c(2, 3), 2]))
+    else results.i <- results.i %>% mutate(est.low = NA_real_, est.high = NA_real_)
+    
+    
+    # Different extraction of estimate depending on model type
+    if(model.type == "reg") results.i <- results.i %>% mutate(est = coefficients(summary(model.i))[c(2, 3), 1])
+    if(model.type == "betareg") results.i <- results.i %>% mutate(est = coefficients(summary(model.i))$mean[c(2, 3), 1])
+    results.i <- results.i %>% mutate(est = ifelse(is.na(est.low), NA_real_, est))
+    
+    # Add to the final table
+    if(i == 1) results <- results.i
+    else results <- rbind(results, results.i)
+    
+  }
+  
+  # Label for the plot
+  breaks.label <- (data.frame(disturbance = c("storm", "fire", "other", "biotic", "snow")) %>%
+                     left_join(results %>%
+                                 mutate(label = paste0(disturbance, "\n (n = ", n, ")")) %>%
+                                 dplyr::select(disturbance, label) %>%
+                                 distinct(), 
+                               by = "disturbance"))$label
+  
+  # Final plot
+  plot.effect <- results %>%
+    mutate(disturbance = factor(disturbance, levels = rev(c("storm", "fire", "other", "biotic", "snow"))), 
+           var = toupper(var)) %>%
+    ggplot(aes(x = disturbance, y = est, color = disturbance)) + 
+    geom_point() + 
+    geom_errorbar(aes(ymin = est.low, ymax = est.high), width = 0) + 
+    scale_color_manual(values = rev(c("#4361EE", "#F77F00", "#5F0F40", "#90A955", "#006D77"))) +
+    geom_hline(yintercept = 0, linetype = "dashed") + 
+    ylab("Effect on disturbance sensitivity") + 
+    xlab("") + 
+    scale_x_discrete(labels = rev(breaks.label)) +
+    facet_wrap( ~ var, nrow = 1) + 
+    coord_flip() + 
+    theme(panel.background = element_rect(color = "black", fill = "white"), 
+          panel.grid = element_blank(), 
+          strip.background = element_blank(),
+          legend.position = "none", 
+          axis.text.x = element_text(size = 10), 
+          axis.text.y = element_text(size = 14), 
+          axis.title = element_text(size = 15), 
+          strip.text = element_text(size = 15))
+  
+  
+  # Save the plot
+  # -- When the option chosen is climatic variables: just show the effect
+  if(variables.in == "clim"){
+    ggsave(file.in, plot.effect, width = 15, height = 7, units = "cm", dpi = 600, bg = "white")
+  }
+  # -- When the option chosen is pca axis: show both the pca and the effect
+  if(variables.in == "pca"){
+    plot.out <- plot_grid(plot.pca, plot.effect, nrow = 1, scale = 0.9, 
+                          labels = c("(a)", "(b)"), rel_widths = c(1, 1.3), align = "h")
+    ggsave(file.in, plot.out, width = 25, height = 10, units = "cm", dpi = 600, bg = "white")
+  }
+  
+  # Return file name
+  return(file.in)
+}
+
+
+
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## Outdated functions ------------
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

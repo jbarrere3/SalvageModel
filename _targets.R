@@ -23,7 +23,8 @@ lapply(grep("R$", list.files("R"), value = TRUE), function(x) source(file.path("
 # install if needed and load packages
 packages.in <- c("dplyr", "ggplot2", "RCurl", "httr", "tidyr", "data.table", "sp", "R2jags", "rstan", "cowplot",
                  "ggmcmc", "taxize", "rnaturalearth", "ggspatial", "sf", "ggnewscale", "readxl", "scales", 
-                 "FactoMineR", "ade4", "factoextra", "xtable", "MASS", "vegan", "lme4", "car", "GGally", "grid")
+                 "FactoMineR", "ade4", "factoextra", "xtable", "MASS", "vegan", "lme4", "car", "GGally", "grid", 
+                 "betareg")
 for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.packages()))) install.packages(packages.in[i])
 # Targets options
 options(tidyverse.quiet = TRUE, 
@@ -292,6 +293,11 @@ list(
   tar_target(fig_trait_effect_conifer_ms, plot_trait_effect_ms(
     traits, traits_TRY, disturbance_sensitivity, disturbance_sensitivity_bis, 
     species, group.in = "conifer", "output/fig/ms/trait_effect_conifer.jpg"), format = "file"),
+  
+  # Effect of climate on sensitivity
+  tar_target(fig_climate_effect_ms, plot_climate_effect_ms(
+    gbif_file, disturbance_sensitivity, disturbance_sensitivity_bis, 
+    file.in = "output/fig/ms/climate_effect.jpg"), format = "file"),
   
   
   

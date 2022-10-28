@@ -774,6 +774,124 @@ export_trait_result_latex <- function(traits, traits_TRY, disturbance_sensitivit
 
 
 
+#' Create a latex table with the results  of the trait models
+#' @param traits dataframe containing trait values per species
+#' @param traits_TRY dataframe containing trait values from TRY per species
+#' @param disturbance_sensivity_full dataframe containing the sensitivity to each disturbance
+#' @param disturbance_sensivity_full_bis dataframe containing the sensitivity to biotic and snow
+#' @param species Table containing species information
+#' @param group.in character indicating which species to include ("all", "conifer" or "broadleaf")
+#' @param file.in Name of the file to save
+export_trait_result_full_latex <- function(traits, traits_TRY, disturbance_sensitivity_full, disturbance_sensitivity_full_bis, 
+                                           species, group.in = "all", file.in){
+  
+  # Initiate tables for disturbances
+  tables <- list()
+  
+  # merge disturbance sensitivity 
+  disturbance_sensitivity.in <- c(disturbance_sensitivity_full, disturbance_sensitivity_full_bis[c("biotic", "snow")])
+  
+  # Identify the disturbances
+  disturbances.in <- names(disturbance_sensitivity.in)
+  
+  # Rearrange traits table
+  traits.in <- traits %>%
+    left_join(traits_TRY, by = "species") %>%
+    dplyr::select(
+      "species", 
+      "Wood dens." = "wood.density_g.cm3", 
+      "Shade tol." = "shade.tolerance", 
+      "Root mass frac." = "Root_mass_fraction", 
+      "Bark thick." = "bark.thickness_mm", 
+      "H/dbh ratio" = "height.dbh.ratio", 
+      "Lifespan" = "TRY_plant.lifespan_year", 
+      "Max. growth" = "growth.max", 
+      "Leaf C/N" = "TRY_leaf.CN.ratio_g.cm3", 
+      "Leaf Nmass" = "TRY_leaf.N.mass_mg.g", 
+      "Leaf thick." = "TRY_leaf.thickness_mm", 
+      "Stomata cond." = "TRY_stomata.conductance_millimolm-2s-1"
+    )
+  
+  # Identify the species to select depending on the group 
+  species.to.select <- (species %>%
+                          mutate(group.in = group.in) %>%
+                          mutate(keep = case_when(group.in == "conifer" ~ ifelse(group == "Gymnosperms", 1, 0), 
+                                                  group.in == "broadleaf" ~ ifelse(group == "Angiosperms", 1, 0), 
+                                                  group.in == "all" ~ 1)) %>%
+                          filter(keep == 1))$species
+  
+  # And filter trait table
+  traits.in <- traits.in %>% filter(species %in% species.to.select)
+  
+  # Center and scale the trait values
+  traits.in <- scale_data_model(traits.in, var = colnames(traits.in)[c(2:dim(traits.in)[2])])
+  
+  # Loop on all traits
+  for(i in 1:(dim(traits.in)[2] - 1)){
+    # Identify the name of trait i
+    trait.i <- colnames(traits.in)[i+1]
+    # Create a table with only species and trait i
+    traits.i <- traits.in %>% dplyr::select("species", "trait" = trait.i)
+    # Loop on all type of disturbances
+    for(j in 1:length(disturbances.in)){
+      # Create a table with trait i and sensitivity to disturbance j
+      data.ij <- disturbance_sensitivity.in[[j]] %>%
+        mutate(sensitivity.logit = log(p/(1 - p)), 
+               w = 1/length(unique(.$iter))) %>%
+        left_join((traits.i), 
+                  by = "species") %>%
+        drop_na()
+      # Only perform a test if there is enough data
+      if(length(unique(data.ij$species)) > 3){
+        # Fit a model
+        model.ij <- betareg(p ~ trait, weights = w, data = data.ij, link = "logit")
+        # Results
+        table.ij <- data.frame(
+          trait = trait.i, 
+          Est. = as.character(round(summary(model.ij)$coefficients$mean[2, 1], digits = 1)), 
+          Zval. = as.character(round(summary(model.ij)$coefficients$mean[2, 3], digits = 1)), 
+          p = scales::pvalue(summary(model.ij)$coefficients$mean[2, 4], accuracy = 0.01)
+        )
+      }else{table.ij <- data.frame(trait = trait.i, Est. = "", Zval. = "", p = "")}
+      
+      
+      # Add to the list containing the final results
+      if(i == 1) eval(parse(text = paste0("tables$", disturbances.in[j], " <- table.ij ")))
+      else eval(parse(text = paste0("tables$", disturbances.in[j], " <- rbind.data.frame(tables$", disturbances.in[j], ", table.ij)")))
+    }
+  }
+  
+  # Loop again on all disturbances
+  for(j in 1:length(disturbances.in)){
+    # Initialize dataframe
+    out.j <- rbind.data.frame(
+      data.frame(col1 = "", col2 = "", col3 = disturbances.in[j], col4 = ""), 
+      data.frame(col1 = "", col2 = "Est.", col3 = "z val.", col4 = "p"), 
+      data.frame(col1 = tables[[j]][, 1], col2 = tables[[j]][, 2], 
+                 col3 = tables[[j]][, 3], col4 = tables[[j]][, 4]))
+    colnames(out.j) <- c("col1", paste0("col", (c(1:3) + 1 + 3*(j - 1))))
+    if(j == 1) out <- out.j
+    else out <- cbind(out, out.j[, c(2:4)])
+  }
+  # Remove column names
+  colnames(out) <- NULL
+  
+  # Create output dir if necessary
+  create_dir_if_needed(file.in)
+  
+  # create a tex file
+  print(xtable(out, type = "latex", 
+               caption = paste0("Statistics of the beta regressions predicting the effect of centered 
+               and scaled trait values to disturbance sensitivity for ", group.in, " species"), 
+               label = "table_traits"), 
+        include.rownames=FALSE, hline.after = c(1, 2, dim(out)[1]), 
+        include.colnames = FALSE, caption.placement = "top", file = file.in)
+  
+  #return output
+  return(file.in)
+}
+
+
 
 #' Extract statistics of the models predicting the sensitivity to all disturbances vs traits
 #' @param traits dataset containing trait values per species

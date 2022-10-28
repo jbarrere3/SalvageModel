@@ -3330,9 +3330,6 @@ plot_trait_effect_full_ms <- function(traits, traits_TRY, disturbance_sensitivit
 #' @param gbif_file Name of the file containing climate data per species
 #' @param disturbance_sensitivity_full list of dataset containing disturbance sensitivity per species
 #' @param disturbance_sensitivity_full_bis list of dataset containing disturbance sensitivity to snow and biotic
-#' @param variables.in character indicating if explanatory var should be climate directly ("clim") or pca axis ("pca")
-#' @param weight.method character, indicates if weight in the model should be calculated based on conf. int. ("ic") or sd ("sd")
-#' @param model.type character: "reg" (regression with logit transfo) or "betareg" (with betareg package)
 #' @param file.in Where to save the plot
 plot_climate_effect_ms <- function(gbif_file, disturbance_sensitivity_full, disturbance_sensitivity_full_bis, file.in){
   

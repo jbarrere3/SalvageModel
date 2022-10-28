@@ -100,6 +100,13 @@ list(
   tar_target(disturbance_sensitivity_bis, get_disturbance_sensivity(jags.model_bis, data_jags_bis, data_model_bis, 
                                                                     dbh.ref = 250, I.ref = 0.75)), 
   
+  # Extract model prediction for every iteration
+  tar_target(disturbance_sensitivity_full, get_disturbance_sensivity_full(
+    jags.model, data_jags, data_model, dbh.ref = 250, I.ref = 0.75)), 
+  tar_target(disturbance_sensitivity_full_bis, get_disturbance_sensivity_full(
+    jags.model_bis, data_jags_bis, data_model_bis, dbh.ref = 250, I.ref = 0.75)),
+  
+  
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # -- Step 4 - Plot model outputs ----
   
@@ -203,6 +210,17 @@ list(
     traits, traits_TRY, disturbance_sensitivity, disturbance_sensitivity_bis, "output/table/traits_allDist.tex"), 
     format = "file"),
   
+  ## Extract trait analysis with betareg and all mcmc iterations in a table
+  tar_target(table_result_trait_full_all, export_trait_result_full_latex(
+    traits, traits_TRY, disturbance_sensitivity_full, disturbance_sensitivity_full_bis, 
+    species, group.in = "all", "output/table/reference_vs_traits_full_all.tex"), format = "file"),
+  tar_target(table_result_trait_full_broadleaf, export_trait_result_full_latex(
+    traits, traits_TRY, disturbance_sensitivity_full, disturbance_sensitivity_full_bis, 
+    species, group.in = "broadleaf", "output/table/reference_vs_traits_full_broadleaf.tex"), format = "file"),
+  tar_target(table_result_trait_full_conifer, export_trait_result_full_latex(
+    traits, traits_TRY, disturbance_sensitivity_full, disturbance_sensitivity_full_bis, 
+    species, group.in = "conifer", "output/table/reference_vs_traits_full_conifer.tex"), format = "file"),
+  
   
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # -- Step 6 - Exploratory plots ----
@@ -229,7 +247,7 @@ list(
   
   # Climate vs disturbance-related climatic indices
   tar_target(fig_disturbance_climate_ms, plot_disturbance_climate_ms(
-    disturbance_sensitivity, disturbance_sensitivity_bis, gbif_disturbance_file, 
+    disturbance_sensitivity_full, disturbance_sensitivity_full_bis, gbif_disturbance_file, 
     "output/fig/ms/sensity_vs_climate_disturbance.jpg"), format = "file"),
   
   # PCA of the climatic variables
@@ -282,9 +300,20 @@ list(
     traits, traits_TRY, disturbance_sensitivity, disturbance_sensitivity_bis, 
     species, group.in = "conifer", "output/fig/ms/trait_effect_conifer.jpg"), format = "file"),
   
+  # Effect of traits on sensitivity using betareg and all iterations of MCMC
+  tar_target(fig_trait_effect_allsp_full_ms, plot_trait_effect_full_ms(
+    traits, traits_TRY, disturbance_sensitivity_full, disturbance_sensitivity_full_bis, species, group.in = "all", 
+    "output/fig/ms/trait_effect_full_all.jpg"), format = "file"),
+  tar_target(fig_trait_effect_broadleaf_full_ms, plot_trait_effect_full_ms(
+    traits, traits_TRY, disturbance_sensitivity_full, disturbance_sensitivity_full_bis, species, group.in = "broadleaf", 
+    "output/fig/ms/trait_effect_full_broadleaf.jpg"), format = "file"),
+  tar_target(fig_trait_effect_conifer_full_ms, plot_trait_effect_full_ms(
+    traits, traits_TRY, disturbance_sensitivity_full, disturbance_sensitivity_full_bis, species, group.in = "conifer", 
+    "output/fig/ms/trait_effect_full_conifer.jpg"), format = "file"),
+  
   # Effect of climate on sensitivity
   tar_target(fig_climate_effect_ms, plot_climate_effect_ms(
-    gbif_file, disturbance_sensitivity, disturbance_sensitivity_bis, 
+    gbif_file, disturbance_sensitivity_full, disturbance_sensitivity_full_bis, 
     file.in = "output/fig/ms/climate_effect.jpg"), format = "file"),
   
   

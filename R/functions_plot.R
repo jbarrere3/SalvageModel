@@ -2811,6 +2811,151 @@ plot_traits_vs_sensitivity_ms <- function(traits, traits_TRY, disturbance_sensit
 }
 
 
+#' Plot senstivity to all disturbances against traits on one multipanel
+#' @param traits dataset containing trait values per species
+#' @param traits_TRY dataset containing trait values per species from TRY
+#' @param disturbance_sensitivity_full dataset containing disturbance sensitivity per species for each mcmc iteration
+#' @param disturbance_sensitivity_full_bis list of dataset containing disturbance sensitivity to snow and biotic for each mcmc iteration
+#' @param file.in Name of the file to save (including path)
+plot_traits_vs_sensitivity_varweight_ms <- function(traits, traits_TRY, disturbance_sensitivity_full, 
+                                                    disturbance_sensitivity_full_bis, file.in){
+  
+  ## - Create directory if needed
+  create_dir_if_needed(file.in)
+  
+  ## - Initialize plot list
+  plots.out <- list()
+  
+  ## - Assemble the two disturbance sensitivity files
+  disturbance_sensitivity.in <- c(disturbance_sensitivity_full, disturbance_sensitivity_full_bis[c("snow", "biotic")])
+  
+  ## - Loop on all disturbance types to assemble data sets
+  for(i in 1:length(names(disturbance_sensitivity.in))){
+    data.in.i <- as.data.frame(disturbance_sensitivity.in[[i]]) %>%
+      mutate(disturbance = names(disturbance_sensitivity.in)[i])
+    if(i == 1) data.in <- data.in.i
+    if(i > 1) data.in <- rbind(data.in, data.in.i)
+  }
+  
+  ## - Rearrange traits table
+  traits.in <- traits %>%
+    left_join(traits_TRY, by = "species") %>%
+    dplyr::select(
+      "species", 
+      "Wood density" = "wood.density_g.cm3", 
+      "Shade tolerance" = "shade.tolerance", 
+      "Root mass fraction" = "Root_mass_fraction", 
+      "Bark thickness" = "bark.thickness_mm", 
+      "H to dbh ratio" = "height.dbh.ratio", 
+      "Leaf CN ratio" = "TRY_leaf.CN.ratio_g.cm3", 
+      "Leaf NP ratio" = "TRY_leaf.NP.ratio_g.cm3", 
+      "Leaf Nmass" = "TRY_leaf.N.mass_mg.g", 
+      "Leaf Pmass" = "TRY_leaf.P.mass_mg.g", 
+      "SLA" = "TRY_leaf.sla_mm2mg-1", 
+      "Leaf thickness" = "TRY_leaf.thickness_mm", 
+      "Lifespan" = "TRY_plant.lifespan_year", 
+      "Stomata conductance" = "TRY_stomata.conductance_millimolm-2s-1", 
+      "Maximum growth" = "growth.max"
+    )
+  
+  
+  # Loop on all traits
+  for(trait.i in colnames(traits.in)[which(colnames(traits.in) != "species")]){
+    
+    # Format data for the model
+    data.i <- data.in %>%
+      # Logit transformation and weight
+      mutate(p.logit = log(p/(1 - p))) %>%
+      group_by(species, disturbance) %>%
+      summarize(w = 1/var(p.logit), 
+                p = mean(p),
+                p_025.logit = quantile(p.logit, probs = 0.025), 
+                p_975.logit = quantile(p.logit, probs = 0.975), 
+                p.logit = mean(p.logit)) %>%
+      mutate(p_025 = plogis(p_025.logit), 
+             p_975 = plogis(p_975.logit)) %>%
+      left_join((traits.in %>% dplyr::select("species", "trait" = trait.i)), 
+                by = "species") %>%
+      # remove NA
+      drop_na()
+    
+    # Scale weight so that the sum equals the number of observations
+    data.i$w <- data.i$w*dim(data.i)[1]/sum(data.i$w)
+    
+    # Fit a model
+    model.i <- lmer(p.logit ~ trait + (1|species), weights = w, data = data.i)
+    
+    # Data with the predictions of the model
+    data.fit <- data.frame(
+      trait = c(round(min(data.i$trait)*100, digits = 0):round(max(data.i$trait)*100, digits = 0))/100) %>%
+      # Extract model coefficients
+      mutate(a = summary(model.i)$coefficients[1,1], 
+             a.se = summary(model.i)$coefficients[1,2], 
+             b = summary(model.i)$coefficients[2,1], 
+             b.se = summary(model.i)$coefficients[2,2]) %>%
+      # Predict output
+      mutate(fit.logit = a + b*trait, 
+             fit.logit.inf = a - a.se + (b - b.se)*trait,
+             fit.logit.sup = a + a.se + (b + b.se)*trait,
+             fit = plogis(fit.logit), 
+             fit.inf = plogis(fit.logit.inf), 
+             fit.sup = plogis(fit.logit.sup), 
+             p = NA_real_)
+    
+    # Plot predictions 
+    plot.i <- data.i %>%
+      mutate(disturbance = factor(disturbance, levels = c("biotic", "fire", "other", "snow", "storm"))) %>%
+      ggplot(aes(x = trait, y = p)) + 
+      geom_errorbar(aes(ymin = p_025, ymax = p_975, color =disturbance), width = 0, alpha = 0.5) +
+      geom_point(size = 1, aes(color = disturbance), alpha = 0.5) + 
+      scale_color_manual(values = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")) +
+      geom_line(data = data.fit, aes(y = fit, group = 1), inherit.aes = TRUE) + 
+      geom_line(data = data.fit, aes(y = fit.inf, group = 1), linetype = "dashed", inherit.aes = TRUE) + 
+      geom_line(data = data.fit, aes(y = fit.sup, group = 1), linetype = "dashed", inherit.aes = TRUE) + 
+      ylab("Disturbance \n sensitivity") + xlab(trait.i) +
+      theme(panel.background = element_rect(color = "black", fill = "white"), 
+            panel.grid = element_blank(), 
+            legend.position = "none", 
+            plot.title = element_text(size = 11), 
+            axis.title = element_text(size = 13)) + 
+      ggtitle(paste0("Chisq = ", round(Anova(model.i)[1, 1], digits = 2), ", ",
+                     scales::pvalue(Anova(model.i)[1, 3], add_p = TRUE, accuracy = 0.01))) 
+    
+    
+    # If the model is significant, add to the output list
+    if(round(Anova(model.i)[1, 3], digits = 2) <= 0.05){
+      eval(parse(text = paste0("plots.out$", gsub("\\ ", "", trait.i), " <- plot.i")))
+    }
+  }
+  
+  # Create a legend for the plot
+  plot.legend <- cowplot::get_legend(
+    data.frame(x = c(1:5), y = c(1:5), ymin = c(0:4), ymax = c(2:6), 
+               disturbance = factor(c("storm", "fire", "other", "biotic", "snow"), 
+                                    levels = c("storm", "fire", "other", "biotic", "snow"))) %>%
+      ggplot(aes(x = x, y = y, color = disturbance)) + 
+      geom_point() + 
+      geom_errorbar(aes(ymin = ymin, ymax = ymax), width = 0) + 
+      scale_color_manual(values = c("#4361EE", "#F77F00", "#5F0F40", "#90A955", "#006D77")) + 
+      theme(legend.title = element_blank(), 
+            legend.key = element_blank(), 
+            legend.text = element_text(size = 19)))
+  
+  # Final plot
+  plot.out <- plot_grid(
+    plot_grid(plotlist = plots.out, align = "hv", nrow = 1, scale = 0.9), 
+    plot.legend, nrow = 1, rel_widths = c(1, 0.25)
+  )
+  
+  # Save the plot
+  ggsave(file.in, plot.out, width = 21, height = 8, units = "cm", dpi = 600)
+  
+  return(file.in)
+  
+}
+
+
+
 #' Plot the relation between disturbance severity (observed) and intensity (estimated)
 #' along with the distribution of each disturbance intensity
 #' @param jags.model rjags object
@@ -3323,6 +3468,149 @@ plot_trait_effect_full_ms <- function(traits, traits_TRY, disturbance_sensitivit
   return(file.in)
   
 }
+
+
+#' Plot the effect of traits on disturbance sensitivity using betareg and inverse variance as weight
+#' @param traits dataframe containing trait values per species
+#' @param traits_TRY dataframe containing trait values from TRY per species
+#' @param disturbance_sensivity_full dataframe containing the sensitivity to each disturbance
+#' @param disturbance_sensivity_full_bis dataframe containing the sensitivity to biotic and snow
+#' @param species Table containing species information
+#' @param group.in character indicating which species to include ("all", "conifer" or "broadleaf")
+#' @param file.in Name of the file to save
+plot_trait_effect_varweight_ms <- function(traits, traits_TRY, disturbance_sensitivity_full, disturbance_sensitivity_full_bis, 
+                                           species, group.in = "all", file.in){
+  
+  # Create dir if needed
+  create_dir_if_needed(file.in)
+  
+  # merge disturbance sensitivity 
+  disturbance_sensitivity.in <- c(disturbance_sensitivity_full, disturbance_sensitivity_full_bis[c("biotic", "snow")])
+  
+  # Identify the disturbances
+  disturbances.in <- names(disturbance_sensitivity.in)
+  
+  # Rearrange traits table
+  traits.in <- traits %>%
+    left_join(traits_TRY, by = "species") %>%
+    dplyr::select(
+      "species", 
+      "Wood dens." = "wood.density_g.cm3", 
+      "Shade tol." = "shade.tolerance", 
+      "Root mass frac." = "Root_mass_fraction", 
+      "Bark thick." = "bark.thickness_mm", 
+      "H/dbh ratio" = "height.dbh.ratio", 
+      "Lifespan" = "TRY_plant.lifespan_year", 
+      "Max. growth" = "growth.max", 
+      "Leaf C/N" = "TRY_leaf.CN.ratio_g.cm3", 
+      "Leaf Nmass" = "TRY_leaf.N.mass_mg.g", 
+      "Leaf thick." = "TRY_leaf.thickness_mm", 
+      "Stomata cond." = "TRY_stomata.conductance_millimolm-2s-1"
+    )
+  
+  # Identify the species to select depending on the group 
+  species.to.select <- (species %>%
+                          mutate(group.in = group.in) %>%
+                          mutate(keep = case_when(group.in == "conifer" ~ ifelse(group == "Gymnosperms", 1, 0), 
+                                                  group.in == "broadleaf" ~ ifelse(group == "Angiosperms", 1, 0), 
+                                                  group.in == "all" ~ 1)) %>%
+                          filter(keep == 1))$species
+  
+  # And filter trait table
+  traits.in <- traits.in %>% filter(species %in% species.to.select)
+  
+  # Center and scale the trait values
+  traits.in <- scale_data_model(traits.in, var = colnames(traits.in)[c(2:dim(traits.in)[2])])
+  
+  # Loop on all traits
+  for(i in 1:(dim(traits.in)[2] - 1)){
+    # Identify the name of trait i
+    trait.i <- colnames(traits.in)[i+1]
+    # Create a table with only species and trait i
+    traits.i <- traits.in %>% dplyr::select("species", "trait" = trait.i)
+    # Loop on all type of disturbances
+    for(j in 1:length(disturbances.in)){
+      
+      # Create a table with trait i and sensitivity to disturbance j
+      data.ij <- disturbance_sensitivity.in[[j]] %>%
+        mutate(p.logit = log(p/(1 - p))) %>%
+        group_by(species) %>%
+        summarize(w = 1/var(p.logit), 
+                  p = mean(p)) %>%
+        left_join((traits.i), 
+                  by = "species") %>%
+        drop_na()
+      
+      # Scale the weight so that the sum equals the number of observations
+      data.ij$w <- data.ij$w*dim(data.ij)[1]/sum(data.ij$w)
+      
+      # Only perform a test if there is enough data
+      if(length(unique(data.ij$species)) > 3){
+        
+        # Fit a model depending on model type chosen
+        model.ij <- betareg(p ~ trait, weights = w, data = data.ij, link = "logit")
+        
+        # Extract results
+        table.ij <- data.frame(
+          trait = trait.i, 
+          disturbance = disturbances.in[j],
+          n = length(unique(data.ij$species)),
+          Est.sup = confint(model.ij)[2, 2], 
+          Est.inf = confint(model.ij)[2, 1], 
+          Est = coefficients(summary(model.ij))$mean[2, 1]
+        )
+        
+      }else{table.ij <- data.frame(trait = trait.i, disturbance = disturbances.in[j], n = NA_real_, 
+                                   Est.sup = NA_real_, Est.inf = NA_real_, Est = NA_real_)}
+      
+      
+      # Add to the list containing the final results
+      if(i == 1 & j == 1) data <- table.ij
+      else data <- rbind.data.frame(data, table.ij)
+    }
+  }
+  
+  # Add categories for each trait
+  data <- data %>%
+    mutate(trait.category = case_when(
+      trait %in% c("Wood dens.", "Lifespan", "Max. growth") ~ "Growth vs.\n  survival", 
+      trait %in% c("Leaf thick.", "Stomata cond.") ~ "Drought \n traits", 
+      trait %in% c("Leaf C/N", "Leaf Nmass") ~ "Growth vs.\n defense", 
+      TRUE ~ "Other\ntraits"
+    ), 
+    significance = ifelse((Est.inf > 0 | Est.sup < 0), "*", ""), 
+    label = ifelse(n > 3, paste0("(", n, ") ", significance), ""))
+  
+  ## - Make the plot
+  plot.out <- data %>%
+    mutate(disturbance = factor(disturbance, levels = c("storm", "fire", "other", "biotic",  "snow"))) %>%
+    ggplot(aes(x = trait, y = Est, color = disturbance)) + 
+    geom_hline(yintercept = 0, color = "grey", linetype = "dashed", size = 0.3) + 
+    geom_point(size = 1) + 
+    geom_errorbar(aes(ymin = Est.inf, ymax = Est.sup), width = 0) + 
+    facet_grid(trait.category ~ disturbance, scales = "free_y", space = "free_y") +
+    geom_text(aes(label = label, y = max(data$Est.sup, na.rm = TRUE)), 
+              size = 2.5, nudge_y = 3, hjust = "inward", show.legend = F) +
+    scale_color_manual(values = c("#4361EE", "#F77F00", "#5F0F40", "#90A955", "#006D77")) +
+    xlab("") + ylab("Trait effect on disturbance sensitivity") +
+    theme(panel.background = element_rect(color = "black", fill = "white"), 
+          panel.grid = element_blank(), 
+          strip.background = element_blank(), 
+          strip.text.x = element_text(size = 13),
+          strip.text.y = element_text(size = 13, angle = 360),
+          axis.title = element_text(size = 15),
+          legend.position = "none",
+          axis.text.x = element_text(size = 10, angle = 360),
+          axis.text.y = element_text(size = 10, angle = 360)) + 
+    coord_flip() + 
+    ylim(min(data$Est.inf, na.rm = T), (max(data$Est.sup, na.rm = T) + 3))
+  
+  ## - Save the plot
+  ggsave(file.in, plot.out, width = 23, height = 9, units = "cm", dpi = 600, bg = "white")
+  return(file.in)
+  
+}
+
 
 
 

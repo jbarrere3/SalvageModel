@@ -268,6 +268,11 @@ list(
     traits, traits_TRY, disturbance_sensitivity, disturbance_sensitivity_bis, 
     "output/fig/ms/traits_vs_sensitivity.jpg"), format = "file"), 
   
+  # Traits vs sensitivity all disturbance together with variance weight
+  tar_target(fig_traits_vs_sensitivity_varweight_ms, plot_traits_vs_sensitivity_varweight_ms(
+    traits, traits_TRY, disturbance_sensitivity_full, disturbance_sensitivity_full_bis, 
+    "output/fig/ms/traits_vs_sensitivity_varweight.jpg"), format = "file"), 
+  
   # Correlation matrix between disturbance sensitivity
   tar_target(fig_correlation_disturbance, plot_correlation_disturbance(
     disturbance_sensitivity, disturbance_sensitivity_bis, "output/fig/ms/correlation_disturbance.png")), 
@@ -309,7 +314,18 @@ list(
     "output/fig/ms/trait_effect_full_broadleaf.jpg"), format = "file"),
   tar_target(fig_trait_effect_conifer_full_ms, plot_trait_effect_full_ms(
     traits, traits_TRY, disturbance_sensitivity_full, disturbance_sensitivity_full_bis, species, group.in = "conifer", 
-    "output/fig/ms/trait_effect_full_conifer.jpg"), format = "file"),
+    "output/fig/ms/trait_effect_full_conifer.jpg"), format = "file"), 
+  
+  # Effect of traits on sensitivity using betareg and inverse of variance as weight
+  tar_target(fig_trait_effect_allsp_varweight_ms, plot_trait_effect_varweight_ms(
+    traits, traits_TRY, disturbance_sensitivity_full, disturbance_sensitivity_full_bis, species, group.in = "all", 
+    "output/fig/ms/trait_effect_varweight_all.jpg"), format = "file"),
+  tar_target(fig_trait_effect_broadleaf_varweight_ms, plot_trait_effect_varweight_ms(
+    traits, traits_TRY, disturbance_sensitivity_full, disturbance_sensitivity_full_bis, species, group.in = "broadleaf", 
+    "output/fig/ms/trait_effect_varweight_broadleaf.jpg"), format = "file"),
+  tar_target(fig_trait_effect_conifer_varweight_ms, plot_trait_effect_varweight_ms(
+    traits, traits_TRY, disturbance_sensitivity_full, disturbance_sensitivity_full_bis, species, group.in = "conifer", 
+    "output/fig/ms/trait_effect_varweight_conifer.jpg"), format = "file"),
   
   # Effect of climate on sensitivity
   tar_target(fig_climate_effect_ms, plot_climate_effect_ms(

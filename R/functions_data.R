@@ -989,6 +989,24 @@ export_jags <- function(jags.model.in, data_jags.in, file.in){
 }
 
 
+#' Export sensitivity
+#' @param disturbance_sensitivity_full sensitivity for fire, other and storm for all mcmc iterations
+#' @param disturbance_sensitivity_full_bis sensitivity for snow and biotic for all mcmc iterations
+#' @param file.in name of the file to save, including path
+export_sensitivity <- function(disturbance_sensitivity_full, disturbance_sensitivity_full_bis, file.in){
+  
+  # Create directory if needed
+  create_dir_if_needed(file.in)
+  
+  # Save the two objects
+  save(disturbance_sensitivity_full, disturbance_sensitivity_full_bis, file = file.in)
+  
+  # Return the name of the file
+  return(file.in)
+}
+
+
+
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## Manage traits data      ------------
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

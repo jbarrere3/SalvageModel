@@ -836,23 +836,26 @@ export_trait_result_full_latex <- function(traits, traits_TRY, disturbance_sensi
     for(j in 1:length(disturbances.in)){
       # Create a table with trait i and sensitivity to disturbance j
       data.ij <- disturbance_sensitivity.in[[j]] %>%
-        mutate(sensitivity.logit = log(p/(1 - p)), 
-               w = 1/length(unique(.$iter))) %>%
+        mutate(p.logit = log(p/(1 - p))) %>%
+        group_by(species) %>%
+        summarize(w = 1/var(p.logit), 
+                  p.logit = mean(p.logit)) %>%
+        mutate(p = plogis(p.logit)) %>%
         left_join((traits.i), 
                   by = "species") %>%
         drop_na()
       # Only perform a test if there is enough data
       if(length(unique(data.ij$species)) > 3){
         # Fit a model
-        model.ij <- betareg(p ~ trait, weights = w, data = data.ij, link = "logit")
+        model.ij <- lm(p.logit ~ trait, weights = w, data = data.ij)
         # Results
         table.ij <- data.frame(
           trait = trait.i, 
-          Est. = as.character(round(summary(model.ij)$coefficients$mean[2, 1], digits = 1)), 
-          Zval. = as.character(round(summary(model.ij)$coefficients$mean[2, 3], digits = 1)), 
-          p = scales::pvalue(summary(model.ij)$coefficients$mean[2, 4], accuracy = 0.01)
+          Est. = as.character(round(summary(model.ij)$coefficients[2, 1], digits = 1)), 
+          Fval. = as.character(round(anova(model.ij)[1, 4], digits = 1)), 
+          p = scales::pvalue(anova(model.ij)[1, 5], accuracy = 0.01)
         )
-      }else{table.ij <- data.frame(trait = trait.i, Est. = "", Zval. = "", p = "")}
+      }else{table.ij <- data.frame(trait = trait.i, Est. = "", Fval. = "", p = "")}
       
       
       # Add to the list containing the final results
@@ -883,7 +886,7 @@ export_trait_result_full_latex <- function(traits, traits_TRY, disturbance_sensi
   print(xtable(out, type = "latex", 
                caption = paste0("Statistics of the beta regressions predicting the effect of centered 
                and scaled trait values to disturbance sensitivity for ", group.in, " species"), 
-               label = "table_traits"), 
+               label = paste0("table_traits_", group.in)), 
         include.rownames=FALSE, hline.after = c(1, 2, dim(out)[1]), 
         include.colnames = FALSE, caption.placement = "top", file = file.in)
   

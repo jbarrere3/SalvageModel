@@ -1981,23 +1981,30 @@ plot_disturbance_climate_ms <- function(disturbance_sensitivity_full, disturbanc
       left_join(fread(gbif_disturbance_file) %>% dplyr::select("species", "index" = disturbance.index$index[j]), 
                 by = "species") %>%
       drop_na() %>%
-      mutate(sensitivity.logit = log(p/(1 - p)), 
-             w = 1/length(unique(data.model.j$iter)))
+      mutate(sensitivity.logit = log(p/(1 - p))) %>%
+      group_by(species, index) %>%
+      summarize(p_025 = quantile(p, probs = 0.025), 
+                p_975 = quantile(p, probs = 0.975), 
+                p = mean(p), 
+                p.logit = mean(sensitivity.logit), 
+                w = 1/var(sensitivity.logit))
+    
     # model
-    model.j <- betareg(p ~ index, weights = w, data = data.model.j, link = "logit")
+    model.j <- lm(p.logit ~ index, weights = w, data = data.model.j)
     # Data with predictions
     data.fit.j <- data.frame(index = c(round(min(data.model.j$index)*100, digits = 0):
                                          round(max(data.model.j$index)*100, digits = 0)/100)) %>%
-      mutate(fit = predict(model.j, newdata = .), 
+      mutate(fit.logit = predict(model.j, newdata = .), 
+             fit.lwr = predict(model.j, newdata = ., interval = "confidence")[, 2],
+             fit.upr = predict(model.j, newdata = ., interval = "confidence")[, 3],
+             fit = plogis(fit.logit), 
+             fit.inf = plogis(fit.lwr), 
+             fit.sup = plogis(fit.upr), 
              p = NA_real_)
     
     
     # Plot
     plot.j <- data.model.j %>%
-      group_by(species, index) %>%
-      summarize(p_025 = quantile(p, probs = 0.025), 
-                p_975 = quantile(p, probs = 0.975), 
-                p = mean(p)) %>%
       ggplot(aes(x = index, y = p, group = 1)) + 
       geom_errorbar(aes(ymin = p_025, ymax = p_975), width = 0, color = "#343A40") +
       geom_point(size = 2, shape = 21, fill = disturbance.index$color[j], color = "#343A40") + 
@@ -2008,11 +2015,15 @@ plot_disturbance_climate_ms <- function(disturbance_sensitivity_full, disturbanc
             plot.title = element_text(size = 17, face = "italic"), 
             axis.title = element_text(size = 17)) + 
       scale_y_continuous(breaks = c(0:5)*0.2) + 
-      ggtitle(scales::pvalue(coefficients(summary(model.j))$mean[2, 4], add_p = TRUE, accuracy = 0.01))
+      ggtitle(paste0("F = ", round(anova(model.j)[1, 4], digits = 1), ", ",
+                     scales::pvalue(anova(model.j)[1, 5], add_p = TRUE, accuracy = 0.01)))
     
     # Add line and confidence interval only if the regression is significant
-    if(coefficients(summary(model.j))$mean[2, 4] <= 0.05){
-      plot.j <- plot.j  + geom_line(data = data.fit.j, aes(y = fit), inherit.aes = TRUE, color = disturbance.index$color[j]) 
+    if(anova(model.j)[1, 5] <= 0.05){
+      plot.j <- plot.j  + 
+        geom_line(data = data.fit.j, aes(y = fit), inherit.aes = TRUE, color = disturbance.index$color[j])  + 
+        geom_ribbon(data = data.fit.j, aes(ymin = fit.inf, ymax = fit.sup), 
+                    alpha = 0.5, fill = disturbance.index$color[j], inherit.aes = TRUE)
       
     }
     # Add to the output list
@@ -3387,28 +3398,26 @@ plot_trait_effect_varweight_ms <- function(traits, traits_TRY, disturbance_sensi
         mutate(p.logit = log(p/(1 - p))) %>%
         group_by(species) %>%
         summarize(w = 1/var(p.logit), 
-                  p = mean(p)) %>%
+                  p.logit = mean(p.logit)) %>%
+        mutate(p = plogis(p.logit)) %>%
         left_join((traits.i), 
                   by = "species") %>%
         drop_na()
-      
-      # Scale the weight so that the sum equals the number of observations
-      data.ij$w <- data.ij$w*dim(data.ij)[1]/sum(data.ij$w)
       
       # Only perform a test if there is enough data
       if(length(unique(data.ij$species)) > 3){
         
         # Fit a model depending on model type chosen
-        model.ij <- betareg(p ~ trait, weights = w, data = data.ij, link = "logit")
+        model.ij <- lm(p.logit ~ trait, weights = w, data = data.ij)
         
         # Extract results
         table.ij <- data.frame(
           trait = trait.i, 
           disturbance = disturbances.in[j],
-          n = length(unique(data.ij$species)),
-          Est.sup = confint(model.ij)[2, 2], 
-          Est.inf = confint(model.ij)[2, 1], 
-          Est = coefficients(summary(model.ij))$mean[2, 1]
+          n = dim(data.ij)[1],
+          Est.sup = confint.lm(model.ij)[2, 2], 
+          Est.inf = confint.lm(model.ij)[2, 1],
+          Est = summary(model.ij)$coefficients[2, 1]
         )
         
       }else{table.ij <- data.frame(trait = trait.i, disturbance = disturbances.in[j], n = NA_real_, 
@@ -3556,13 +3565,15 @@ plot_climate_effect_ms <- function(gbif_file, disturbance_sensitivity_full, dist
     
     # Data to fit the model for disturbance i
     data.i <- disturbance_sensitivity.in[[i]]  %>%
+      mutate(p.logit = log(p/(1 - p))) %>%
+      group_by(species) %>%
+      summarize(w = 1/var(p.logit), 
+                p.logit = mean(p.logit)) %>%
       left_join(data.in, by = "species") %>%
-      mutate(p.logit = log(p/(1 - p)), 
-             w = 1/length(unique(.$iter))) %>%
       drop_na()
     
     # Fit model depending on weighting method
-    model.i = betareg(p ~ scale(var.1) + scale(var.2), weights = w, data = data.i, link = "logit")
+    model.i = lm(p.logit ~ scale(var.1) + scale(var.2), weights = w, data = data.i)
     
     # Build result table to plot results
     results.i <- data.frame(disturbance = disturbances.in[i],
@@ -3576,7 +3587,7 @@ plot_climate_effect_ms <- function(gbif_file, disturbance_sensitivity_full, dist
     
     # Different extraction of estimate depending on model type
     results.i <- results.i %>% 
-      mutate(est = coefficients(summary(model.i))$mean[c(2, 3), 1]) %>% 
+      mutate(est = coefficients(summary(model.i))[c(2, 3), 1]) %>% 
       mutate(est = ifelse(is.na(est.low), NA_real_, est))
     
     # Add to the final table

@@ -869,7 +869,7 @@ export_trait_result_full_latex <- function(traits, traits_TRY, disturbance_sensi
     # Initialize dataframe
     out.j <- rbind.data.frame(
       data.frame(col1 = "", col2 = "", col3 = disturbances.in[j], col4 = ""), 
-      data.frame(col1 = "", col2 = "Est.", col3 = "z val.", col4 = "p"), 
+      data.frame(col1 = "", col2 = "Est.", col3 = "F val.", col4 = "p"), 
       data.frame(col1 = tables[[j]][, 1], col2 = tables[[j]][, 2], 
                  col3 = tables[[j]][, 3], col4 = tables[[j]][, 4]))
     colnames(out.j) <- c("col1", paste0("col", (c(1:3) + 1 + 3*(j - 1))))
@@ -884,7 +884,7 @@ export_trait_result_full_latex <- function(traits, traits_TRY, disturbance_sensi
   
   # create a tex file
   print(xtable(out, type = "latex", 
-               caption = paste0("Statistics of the beta regressions predicting the effect of centered 
+               caption = paste0("Statistics of the regressions predicting the effect of centered 
                and scaled trait values to disturbance sensitivity for ", group.in, " species"), 
                label = paste0("table_traits_", group.in)), 
         include.rownames=FALSE, hline.after = c(1, 2, dim(out)[1]), 

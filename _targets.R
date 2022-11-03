@@ -207,7 +207,7 @@ list(
     traits, traits_TRY, disturbance_sensitivity, disturbance_sensitivity_bis, 
     species, group.in = "broadleaf", "output/table/reference_vs_traits_broadleaf.tex"), format = "file"),
   tar_target(table_result_trait_allDist, export_trait_allDist_latex(
-    traits, traits_TRY, disturbance_sensitivity, disturbance_sensitivity_bis, "output/table/traits_allDist.tex"), 
+    traits, traits_TRY, disturbance_sensitivity_full, disturbance_sensitivity_full_bis, "output/table/traits_allDist.tex"), 
     format = "file"),
   
   ## Extract trait analysis with betareg and all mcmc iterations in a table

@@ -2963,7 +2963,7 @@ plot_traits_vs_sensitivity_varweight_ms <- function(traits, traits_TRY, disturba
   if(length(names(plots.out)) == 2) ggsave(file.in, plot.out, width = 21, height = 8, units = "cm", dpi = 600, bg = "white")
   if(length(names(plots.out)) == 3) ggsave(file.in, plot.out, width = 28, height = 6.5, units = "cm", dpi = 600, bg = "white")
   if(length(names(plots.out)) > 3) ggsave(file.in, plot.out, width = 35, height = 6, units = "cm", dpi = 600, bg = "white")
-  
+
   return(file.in)
   
 }

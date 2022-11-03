@@ -902,11 +902,11 @@ export_trait_result_full_latex <- function(traits, traits_TRY, disturbance_sensi
 #' @param disturbance_sensitivity dataset containing disturbance sensitivity per species
 #' @param disturbance_sensitivity_bis list of dataset containing disturbance sensitivity to snow and biotic
 #' @param file.in Name of the file to save (including path)
-export_trait_allDist_latex <- function(traits, traits_TRY, disturbance_sensitivity, 
-                                       disturbance_sensitivity_bis, file.in){
+export_trait_allDist_latex <- function(traits, traits_TRY, disturbance_sensitivity_full, 
+                                       disturbance_sensitivity_full_bis, file.in){
   
   ## - Assemble the two disturbance sensitivity files
-  disturbance_sensitivity.in <- c(disturbance_sensitivity, disturbance_sensitivity_bis[c("snow", "biotic")])
+  disturbance_sensitivity.in <- c(disturbance_sensitivity_full, disturbance_sensitivity_full_bis[c("snow", "biotic")])
   
   ## - Loop on all disturbance types to assemble data sets
   for(i in 1:length(names(disturbance_sensitivity.in))){
@@ -946,16 +946,27 @@ export_trait_allDist_latex <- function(traits, traits_TRY, disturbance_sensitivi
     
     # Format data for the model
     data.i <- data.in %>%
+      # Logit transformation and weight
+      mutate(p.logit = log(p/(1 - p))) %>%
+      group_by(species, disturbance) %>%
+      summarize(w = 1/var(p.logit), 
+                p = mean(p),
+                p_025.logit = quantile(p.logit, probs = 0.025), 
+                p_975.logit = quantile(p.logit, probs = 0.975), 
+                p.logit = mean(p.logit)) %>%
+      mutate(p_025 = plogis(p_025.logit), 
+             p_975 = plogis(p_975.logit)) %>%
       left_join((traits.in %>% dplyr::select("species", "trait" = trait.i)), 
                 by = "species") %>%
-      # Logit transformation and weight
-      mutate(sensitivity.logit = log(p/(1 - p)), 
-             w = 1/(p_975 - p_025)) %>%
       # remove NA
       drop_na()
     
+    # Scale weight so that the sum equals the number of observations
+    data.i$w <- data.i$w*dim(data.i)[1]/sum(data.i$w)
+    
     # Fit a model
-    model.i <- lmer(sensitivity.logit ~ trait + (1|species), weights = w, data = data.i)
+    model.i <- lmer(p.logit ~ trait + (1|species), weights = w, data = data.i)
+    
     # Results
     table.i <- data.frame(
       trait = trait.i, 

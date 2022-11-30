@@ -340,10 +340,10 @@ list(
   # Export jags objects and correspondence tables
   tar_target(rdata_dominance, export_jags(
     jags.model.in = c(jags.model, jags.model_bis), data_jags.in = c(data_jags, data_jags_bis), 
-    file.in = "output/rdata/jags_dominance.Rdata"), format = "file"), 
+    data_model.in = c(data_model, data_model_bis), file.in = "output/rdata/jags_dominance.Rdata"), format = "file"), 
   tar_target(rdata_stock, export_jags(
     jags.model.in = c(jags.model_stock, jags.model_stock_bis), data_jags.in = c(data_jags_stock, data_jags_stock_bis), 
-    file.in = "output/rdata/jags_stock.Rdata"), format = "file"), 
+    data_model.in = c(data_model, data_model_bis), file.in = "output/rdata/jags_stock.Rdata"), format = "file"), 
   tar_target(rdata_sensitivity_full, export_sensitivity(
     disturbance_sensitivity_full, disturbance_sensitivity_full_bis, "output/rdata/sensitivity_full.Rdata"), format = "file")
   

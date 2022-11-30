@@ -977,17 +977,51 @@ export_trait_allDist_latex <- function(traits, traits_TRY, disturbance_sensitivi
 
 
 #' Export jags model as R object
-#' @param jags.model.in Jags model to save
-#' @param data_jags.in dajagas object to save
+#' @param jags.model.in List of fags model to save (one list item per disturbance type)
+#' @param data_jags.in list of dajagas object to save (one list item per disturbance type)
+#' @param data_jags.in list of data_model object to save (one list item per disturbance type)
 #' @param file.in name of the file to save, including path
-export_jags <- function(jags.model.in, data_jags.in, file.in){
+export_jags <- function(jags.model.in, data_jags.in, data_model.in, file.in){
   
   # Create directory if needed
   create_dir_if_needed(file.in)
   
-  # Loop on all disturbances to remove the data in data_jags (and only keep correspondance tables)
+  # Initialize correspondence table
   corresp.tables <- list()
+  # Initialize weight table
+  weight.tables <- list()
+  # Initialize scaling table
+  scale.tables <- list()
+  
+  # Loop on all disturbances 
   for(i in 1:length(names(data_jags.in))){
+    
+    # Table containing the parameters to scale dbh and logratio
+    # -- First run some models
+    mod.dbh.i <- lm(dbh.scaled ~ dbh, data = data.frame(
+      dbh = data_model.in[[i]]$dbh, dbh.scaled = data_jags.in[[i]]$data_jags$dbh))
+    mod.logratio.i <- lm(logratio.scaled ~ logratio,  data = data.frame(
+      logratio = data_model.in[[i]]$log_dbh_dqm, logratio.scaled = data_jags.in[[i]]$data_jags$logratio))
+    # -- Store coefficients in a table
+    scale.table.i <- list(dbh.intercept = summary(mod.dbh.i)$coefficients[1, 1], 
+                          dbh.slope = summary(mod.dbh.i)$coefficients[2, 1], 
+                          logratio.intercept = summary(mod.logratio.i)$coefficients[1, 1], 
+                          logratio.slope = summary(mod.logratio.i)$coefficients[2, 1])
+    # -- Add to the list of scaling tables
+    eval(parse(text = paste0("scale.tables$", names(data_jags.in)[i], " <- scale.table.i")))
+    
+    
+    
+    # Table containing the weight of each species per disturbance type
+    weight.table.i <- data_model.in[[i]] %>%
+      group_by(species, country) %>%
+      summarize(weight = n())
+    eval(parse(text = paste0("weight.tables$", names(data_jags.in)[i], " <- weight.table.i")))
+    
+    
+    
+    
+    # Correspondence tables
     corresp.table.i <- data_jags.in[[i]][-1]
     eval(parse(text = paste0("corresp.tables$", names(data_jags.in)[i], " <- corresp.table.i")))
   }
@@ -996,11 +1030,12 @@ export_jags <- function(jags.model.in, data_jags.in, file.in){
   jags.list <- jags.model.in
   
   # Save the two objects
-  save(corresp.tables, jags.list, file = file.in)
+  save(corresp.tables, jags.list, scale.tables, weight.tables, file = file.in)
   
   # Return the name of the file
   return(file.in)
 }
+
 
 
 #' Export sensitivity

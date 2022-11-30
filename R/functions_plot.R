@@ -2961,9 +2961,13 @@ plot_traits_vs_sensitivity_varweight_ms <- function(traits, traits_TRY, disturba
   # Save the plot
   if(length(names(plots.out)) == 1) ggsave(file.in, plot.out, width = 13, height = 8, units = "cm", dpi = 600, bg = "white")
   if(length(names(plots.out)) == 2) ggsave(file.in, plot.out, width = 21, height = 8, units = "cm", dpi = 600, bg = "white")
-  if(length(names(plots.out)) == 3) ggsave(file.in, plot.out, width = 28, height = 6.5, units = "cm", dpi = 600, bg = "white")
   if(length(names(plots.out)) > 3) ggsave(file.in, plot.out, width = 35, height = 6, units = "cm", dpi = 600, bg = "white")
-
+  if(length(names(plots.out)) == 3){
+    plots.out$legend <- plot.legend
+    plot.out <- plot_grid(plotlist = plots.out, align = "hv", nrow = 2, scale = c(0.95, 0.95, 0.95, 0.5))
+    ggsave(file.in, plot.out, width = 17, height = 13, units = "cm", dpi = 600, bg = "white")
+  } 
+  
   return(file.in)
   
 }
@@ -3588,37 +3592,42 @@ plot_trait_effect_varweight_ms <- function(traits, traits_TRY, disturbance_sensi
       trait %in% c("Wood dens.", "Lifespan", "Max. growth") ~ "Growth vs.\n  survival", 
       trait %in% c("Leaf thick.", "Stomata cond.") ~ "Drought \n traits", 
       trait %in% c("Leaf C/N", "Leaf Nmass") ~ "Growth vs.\n defense", 
-      TRUE ~ "Other\ntraits"
+      trait %in% c("Shade tol.") ~ "Shade \ntolerance", 
+      TRUE ~ "Architectural\ntraits"
     ), 
     significance = ifelse((Est.inf > 0 | Est.sup < 0), "*", ""), 
-    label = ifelse(n > 3, paste0("(", n, ") ", significance), ""))
+    label = ifelse(n > 3, paste0("(", n, ") ", significance), "")) %>%
+    filter(disturbance %in% c("storm", "fire", "biotic")) %>%
+    mutate(disturbance = factor(disturbance, levels = c("storm", "fire", "biotic")))
   
   ## - Make the plot
   plot.out <- data %>%
-    mutate(disturbance = factor(disturbance, levels = c("storm", "fire", "other", "biotic",  "snow"))) %>%
-    ggplot(aes(x = trait, y = Est, color = disturbance)) + 
+    group_by(disturbance) %>%
+    mutate(label.pos = max(Est.sup, na.rm = TRUE)) %>%
+    mutate(label.pos = label.pos + 0.5*(max(Est.sup, na.rm = T) - min(Est.inf, na.rm = T))) %>%
+    ggplot(aes(x = trait, y = Est, fill = disturbance)) + 
     geom_hline(yintercept = 0, color = "grey", linetype = "dashed", size = 0.3) + 
-    geom_point(size = 1) + 
-    geom_errorbar(aes(ymin = Est.inf, ymax = Est.sup), width = 0) + 
-    facet_grid(trait.category ~ disturbance, scales = "free_y", space = "free_y") +
-    geom_text(aes(label = label, y = max(data$Est.sup, na.rm = TRUE)), 
-              size = 2.5, nudge_y = 3, hjust = "inward", show.legend = F) +
-    scale_color_manual(values = c("#4361EE", "#F77F00", "#5F0F40", "#90A955", "#006D77")) +
+    geom_errorbar(aes(ymin = Est.inf, ymax = Est.sup, color = significance), width = 0) + 
+    geom_point(size = 1.5, aes(color = significance), shape = 21) +
+    scale_color_manual(values = c("#6C757D", "black")) +
+    facet_grid(trait.category ~ disturbance, scales = "free", space = "free_y") +
+    geom_text(aes(label = label, y = label.pos, color = significance), 
+              size = 3, hjust = "inward", show.legend = F) +
+    scale_fill_manual(values = c("#4361EE", "#F77F00", "#90A955")) +
     xlab("") + ylab("Trait effect on disturbance sensitivity") +
     theme(panel.background = element_rect(color = "black", fill = "white"), 
           panel.grid = element_blank(), 
           strip.background = element_blank(), 
-          strip.text.x = element_text(size = 13),
+          strip.text.x = element_text(size = 15),
           strip.text.y = element_text(size = 13, angle = 360),
           axis.title = element_text(size = 15),
           legend.position = "none",
-          axis.text.x = element_text(size = 10, angle = 360),
-          axis.text.y = element_text(size = 10, angle = 360)) + 
-    coord_flip() + 
-    ylim(min(data$Est.inf, na.rm = T), (max(data$Est.sup, na.rm = T) + 3))
+          axis.text.x = element_text(size = 8, angle = 360),
+          axis.text.y = element_text(size = 14, angle = 360)) + 
+    coord_flip() 
   
   ## - Save the plot
-  ggsave(file.in, plot.out, width = 23, height = 9, units = "cm", dpi = 600, bg = "white")
+  ggsave(file.in, plot.out, width = 20, height = 12, units = "cm", dpi = 600, bg = "white")
   return(file.in)
   
 }

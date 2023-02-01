@@ -1206,22 +1206,26 @@ export_table_disturbance_stats <- function(FUNDIV_tree, FUNDIV_plot, file.in){
   table.allcountries <- FUNDIV_tree %>%
     left_join((FUNDIV_plot %>% dplyr::select(plotcode, disturbance.nature)), 
               by = "plotcode") %>%
+    left_join((FUNDIV_plot %>% group_by(country) %>% summarize(n.plots.per.country = n())), 
+              by = "country") %>%
     filter(disturbance.nature %in% c("storm", "fire", "other", "snow", "biotic")) %>%
     filter(treestatus != 1) %>%
     mutate(dead = ifelse(treestatus == 2, 0, 1)) %>%
-    group_by(country, plotcode, disturbance.nature) %>%
+    group_by(country, plotcode, disturbance.nature, n.plots.per.country) %>%
     summarize(n.trees = n(), 
               death.rate = sum(dead, na.rm = TRUE)/n(),
               ba.plot = sum(ba_ha1, na.rm = TRUE)) %>%
     ungroup() %>%
     group_by(country, disturbance.nature) %>%
     summarize(n.plots = n(), 
+              perc.plots.per.country = round(100*(n()/n.plots.per.country), digits = 2),
               n.trees.per.plot = mean(n.trees, na.rm = TRUE), 
               n.trees = sum(n.trees, na.rm = TRUE), 
               death.rate = mean(death.rate, na.rm = TRUE), 
               basal.area = mean(ba.plot)) %>%
+    distinct() %>%
     gather(key = "variable", value = "value", colnames(.)[c(3:dim(.)[2])]) %>%
-    mutate(value = ifelse(variable == "death.rate", 
+    mutate(value = ifelse(variable %in% c("death.rate", "perc.plots.per.country"), 
                           as.character(round(value, digits = 2)), 
                           as.character(round(value, digits = 0)))) %>%
     mutate(variable = gsub("\\.", "\\ ", variable)) %>%
@@ -1264,7 +1268,8 @@ export_table_disturbance_stats <- function(FUNDIV_tree, FUNDIV_plot, file.in){
   # create a tex file
   print(xtable(table.out, type = "latex", label = "dist_stat_table",
                caption = "Mean number of trees, plots, number of trees per plot, 
-               basal area and death rate per country and per disturbance type"), 
+               basal area, death rate and percentage of disturbed plots in each 
+               country and for each disturbance type"), 
         include.rownames=FALSE, hline.after = c(0, 1, dim(table.out)[1]), 
         include.colnames = FALSE, caption.placement = "top", file = file.in)
   

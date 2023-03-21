@@ -24,55 +24,34 @@
 #' Get family and order for each species present in the dataset
 #' @param FUNDIV_tree Tree table with a column entitled "species"
 get_species_info <- function(FUNDIV_tree){
-  # Create a dataset with one line per species
-  species <- FUNDIV_tree %>%
-    dplyr::select(species) %>%
-    distinct() %>%
-    # Add the genus
-    mutate(genus = gsub(" .+", "", species), 
-           sp = NA_character_)
-  # Add species
-  for(i in 1:dim(species)[1]) species$sp[i] <- strsplit(species$species[i], split = " ")[[1]][2]
-  # Set to NA when species name is not known
-  species <- species %>%
-    mutate(sp = ifelse(sp %in% c("sp.", "sp", "", "x"), NA_character_, sp),
-           speciesname = ifelse(is.na(sp), NA_character_, paste(genus, sp, sep = " "))) 
   
-  # Create a table connecting species to family
-  species_to_family <- species %>%
-    filter(!is.na(speciesname)) %>%
-    dplyr::select(speciesname) %>%
-    distinct()
-  species_to_family <- tax_name(sci = species_to_family$speciesname, get = "family", db = "ncbi", messages = FALSE)
+  # Extract genus and family of all species present
+  extraction.original <- cbind(data.frame(species.original = unique(FUNDIV_tree$species)), 
+                               TPL(splist = unique(FUNDIV_tree$species)))
   
-  # Create a table linking the genus to the family
-  genus_to_family <- species_to_family %>%
-    dplyr::select(speciesname = query, family) %>%
-    mutate(genus = gsub(" .+", "", speciesname)) %>%
-    dplyr::select(genus, family) %>%
-    filter(!is.na(family)) %>%
-    distinct()
+  # Table linking family to order
+  data(vascular.families)
   
-  # Create a table linking the family to the branch
-  family_to_branch <- tpl_families()
-  
-  # Merge all datasets
-  species.final <- species %>%
-    mutate(genus = gsub(" ", "", genus)) %>%
-    left_join(genus_to_family, by = "genus") %>%
-    left_join(family_to_branch, by = "family")
-  species.final <- species.final %>%
-    left_join((species.final %>% 
-                 filter(!is.na(speciesname)) %>%
-                 mutate(group2 = ifelse(family %in% c("Fagaceae", "Fabaceae"), "Angiosperms", group)) %>%
-                 dplyr::select(genus, group2) %>%
-                 filter(!is.na(group2)) %>%
+  # Format the output
+  out <- extraction.original %>%
+    dplyr::select(species = species.original, 
+                  genus = New.Genus) %>% 
+    left_join((extraction.original %>%
+                 dplyr::select(genus = New.Genus, family = Family) %>%
+                 filter(!is.na(family)) %>%
+                 filter(family != "") %>%
                  distinct()), 
               by = "genus") %>%
-    dplyr::select(species, group = group2, family, genus) %>%
-    distinct()
+    left_join((vascular.families %>%
+                 dplyr::select(family = Family, group = Group) %>%
+                 rbind(data.frame(family = "Leguminosae", group = "angiosperms"))), 
+              by = "family") %>%
+    filter(!is.na(genus)) %>%
+    mutate(group = ifelse(is.na(group), group, paste(toupper(substr(group, 1, 1)), 
+                                                     substr(group, 2, nchar(group)), sep="")))
   
-  return(species.final)
+  # return output
+  return(out)
   
 }
 

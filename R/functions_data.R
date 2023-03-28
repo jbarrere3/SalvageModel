@@ -43,7 +43,8 @@ get_species_info <- function(FUNDIV_tree){
                  distinct()), 
               by = "genus") %>%
     left_join((vascular.families %>%
-                 dplyr::select(family = Family, group = Group)), 
+                 dplyr::select(family = Family, group = Group) %>%
+                 rbind(data.frame(family = "Leguminosae", group = "angiosperms"))), 
               by = "family") %>%
     filter(!is.na(genus)) %>%
     mutate(group = ifelse(is.na(group), group, paste(toupper(substr(group, 1, 1)), 

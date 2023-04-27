@@ -701,3 +701,64 @@ plot_mix_bin <- function(
   ggsave(file.in, plot.out, width = 25, height = 12, units = "cm", dpi = 600, bg = "white")
   return(file.in)
 }
+
+
+#' Plot distribution of the share of conifer in plots
+#' @param FUNDIV_tree Tree level formatted for FUNDIV
+#' @param FUNDIV_plot plot table formatted for FUNDIV with biotic and snow in other category
+#' @param FUNDIV_plot_bis plot table formatted for FUNDIV with biotic and snow only
+#' @param species Species information
+#' @param file.in Name of the file to save (including path)
+plot_distribution_share_conifer = function(
+  FUNDIV_tree, FUNDIV_plot, FUNDIV_plot_bis, species, file.in){
+  
+  # Create directory if needed
+  create_dir_if_needed(file.in)
+  
+  # Vector of color for plotting
+  colors.in = c("#90A955", "#F77F00", "#5F0F40", "#006D77", "#4361EE")
+  names(colors.in) = c("biotic", "fire", "other", "snow", "storm")
+  
+  ## - Begin formatting final dataset
+  data <- FUNDIV_tree %>%
+    # Remove ingrowth
+    filter(treestatus != 1) %>%
+    # Remove recruited trees that died
+    filter(dbh1 > 100) %>%
+    # Remove empty species 
+    filter(species != " ") %>%
+    # Add species information
+    left_join((species %>% dplyr::select(species, group)), by = "species") %>%
+    # Calculate share of conifer per plotcode
+    group_by(plotcode) %>%
+    mutate(conifer = ifelse(group == "Angiosperms", 0, 1)) %>% 
+    summarize(share_conifer = sum(ba_ha1*conifer)/sum(ba_ha1))
+  
+  # Prepare plot-level data for plotting
+  data.plot = rbind(FUNDIV_plot, FUNDIV_plot_bis) %>%
+    left_join(data, by = "plotcode") %>%
+    filter(disturbance.nature != "none")
+  
+  # Plotting
+  plot.out = data.plot %>%
+    ggplot(aes(x = share_conifer, fill = disturbance.nature)) + 
+    geom_histogram(color = "black") +
+    scale_fill_manual(values = colors.in) +
+    facet_wrap(~ disturbance.nature, scales = "free") +
+    theme(panel.background = element_rect(color = "black", fill = "white"), 
+          strip.background = element_blank(), 
+          panel.grid = element_blank(), 
+          legend.position = "none", 
+          strip.text = element_text(size = 12), 
+          axis.title = element_text(size = 12)) + 
+    xlab("Share of conifer in the stand") +
+    geom_vline(data = (data.plot %>%
+                         group_by(disturbance.nature) %>%
+                         summarize(mean = mean(share_conifer, na.rm = TRUE))), 
+               aes(xintercept = mean), inherit.aes = TRUE, linetype = "dashed", 
+               color = "red", size = 1)
+  
+  ## - Save the plot
+  ggsave(file.in, plot.out, width = 15, height = 10, units = "cm", dpi = 600, bg = "white")
+  return(file.in)
+}

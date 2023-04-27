@@ -208,7 +208,12 @@ list(
   tar_target(fig_param_mix, plot_mix(
     param_mix, file.in = "output/fig_mix/param_per_species.jpg"), format = "file"), 
   tar_target(fig_param_mix_bin, plot_mix_bin(
-    param_mix_bin, file.in = "output/fig_mix/param_per_species_bin.jpg"), format = "file")
+    param_mix_bin, file.in = "output/fig_mix/param_per_species_bin.jpg"), format = "file"), 
+  
+  # Plot the share of conifer per plot
+  tar_target(fig_share_conifer, plot_distribution_share_conifer(
+    FUNDIV_tree, FUNDIV_plot, FUNDIV_plot_bis, species, 
+    "output/fig_mix/share_conifer_per_species.jpg"))
   
   
 )

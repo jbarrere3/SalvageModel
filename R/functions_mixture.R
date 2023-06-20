@@ -741,14 +741,24 @@ plot_distribution_share_conifer = function(
   # Prepare plot-level data for plotting
   data.plot = rbind(FUNDIV_plot, FUNDIV_plot_bis) %>%
     left_join(data, by = "plotcode") %>%
-    filter(disturbance.nature != "none")
+    filter(disturbance.nature != "none") %>%
+    filter(share_conifer > 0)
+  
+  # Data with mean value of conifer share per disturbance type
+  data.plot.2 = data.plot %>%
+    group_by(disturbance.nature) %>%
+    summarize(mean = mean(share_conifer, na.rm = TRUE), 
+              n = n()) %>%
+    mutate(share_conifer = 0.9*mean, 
+           count = n*0.5, 
+           label = as.character(round(mean, digits = 3)))
   
   # Plotting
   plot.out = data.plot %>%
     ggplot(aes(x = share_conifer, fill = disturbance.nature)) + 
     geom_histogram(color = "black") +
     scale_fill_manual(values = colors.in) +
-    facet_wrap(~ disturbance.nature, scales = "free") +
+    facet_wrap(~ disturbance.nature, scales = "free_y") +
     theme(panel.background = element_rect(color = "black", fill = "white"), 
           strip.background = element_blank(), 
           panel.grid = element_blank(), 
@@ -756,9 +766,9 @@ plot_distribution_share_conifer = function(
           strip.text = element_text(size = 12), 
           axis.title = element_text(size = 12)) + 
     xlab("Share of conifer in the stand") +
-    geom_vline(data = (data.plot %>%
-                         group_by(disturbance.nature) %>%
-                         summarize(mean = mean(share_conifer, na.rm = TRUE))), 
+    geom_text(data = data.plot.2, aes(label = label, y = count), color = "red",
+              inherit.aes = TRUE, hjust = 1) +
+    geom_vline(data = data.plot.2, 
                aes(xintercept = mean), inherit.aes = TRUE, linetype = "dashed", 
                color = "red", size = 1)
   

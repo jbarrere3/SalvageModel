@@ -552,9 +552,9 @@ get_disturbance_sensivity <- function(jags.model, data_jags, data_model,
              pd = 1 - (1 - pd)^5) %>%
       # Average per species
       group_by(species) %>%
-      summarise(p = mean(pd), 
-                p_025 = as.numeric(quantile(pd, probs = 0.025)), 
-                p_975 = as.numeric(quantile(pd, probs = 0.975)))
+      summarise(p = mean(pd, na.rm = TRUE), 
+                p_025 = as.numeric(quantile(pd, probs = 0.025, na.rm = TRUE)), 
+                p_975 = as.numeric(quantile(pd, probs = 0.975, na.rm = TRUE)))
     
     # Add to the output list
     eval(parse(text = paste0("out$", disturbances.in[i], " <- data.i")))

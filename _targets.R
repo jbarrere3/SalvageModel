@@ -144,9 +144,9 @@ list(
     "output/fig/ms/correlation_disturbance.png")),
 
   # Verify that species sensitivity is not related to the mean intensity or the number of trees exposed
-  tar_target(fig_sensitivity_vs_intensity_and_ntrees, plot_sensitivity_vs_intensity_and_ntrees(
-    c(disturbance_sensitivity, disturbance_sensitivity_bis), c(jags.model, jags.model_bis),
-    c(data_jags, data_jags_bis), "output/fig/ms/sensitivity_vs_intensity_and_ntrees.png"), format = "file"),
+  # tar_target(fig_sensitivity_vs_intensity_and_ntrees, plot_sensitivity_vs_intensity_and_ntrees(
+  #   c(disturbance_sensitivity, disturbance_sensitivity_bis), c(jags.model, jags.model_bis),
+  #   c(data_jags, data_jags_bis), "output/fig/ms/sensitivity_vs_intensity_and_ntrees.png"), format = "file"),
 
 
   # Rhat for the reference model

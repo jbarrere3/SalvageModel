@@ -124,11 +124,11 @@ list(
     c(jags.model, jags.model_bis), c(data_jags, data_jags_bis),
     rbind(FUNDIV_plot_bis, FUNDIV_plot), "output/fig/ms/map_intensity.png")),
 
-  # Observation vs prediction
-  tar_target(fig_predict_vs_obs_meanProba_ms, plot_predicted_vs_observed(
-    c(jags.model, jags.model_bis), c(data_jags, data_jags_bis), c(data_model, data_model_bis),
-    method = "mean.proba", "output/fig/ms/validation.png"),
-    format = "file"),
+  # # Observation vs prediction
+  # tar_target(fig_predict_vs_obs_meanProba_ms, plot_predicted_vs_observed(
+  #   c(jags.model, jags.model_bis), c(data_jags, data_jags_bis), c(data_model, data_model_bis),
+  #   method = "mean.proba", "output/fig/ms/validation.png"),
+  #   format = "file"),
 
   # Plot trends in disturbance occurrence and severity over time
   tar_target(fig_disturbance_trends, plot_disturbance_trends(

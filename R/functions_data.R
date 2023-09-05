@@ -24,55 +24,34 @@
 #' Get family and order for each species present in the dataset
 #' @param FUNDIV_tree Tree table with a column entitled "species"
 get_species_info <- function(FUNDIV_tree){
-  # Create a dataset with one line per species
-  species <- FUNDIV_tree %>%
-    dplyr::select(species) %>%
-    distinct() %>%
-    # Add the genus
-    mutate(genus = gsub(" .+", "", species), 
-           sp = NA_character_)
-  # Add species
-  for(i in 1:dim(species)[1]) species$sp[i] <- strsplit(species$species[i], split = " ")[[1]][2]
-  # Set to NA when species name is not known
-  species <- species %>%
-    mutate(sp = ifelse(sp %in% c("sp.", "sp", "", "x"), NA_character_, sp),
-           speciesname = ifelse(is.na(sp), NA_character_, paste(genus, sp, sep = " "))) 
   
-  # Create a table connecting species to family
-  species_to_family <- species %>%
-    filter(!is.na(speciesname)) %>%
-    dplyr::select(speciesname) %>%
-    distinct()
-  species_to_family <- tax_name(sci = species_to_family$speciesname, get = "family", db = "ncbi", messages = FALSE)
+  # Extract genus and family of all species present
+  extraction.original <- cbind(data.frame(species.original = unique(FUNDIV_tree$species)), 
+                               TPL(splist = unique(FUNDIV_tree$species)))
   
-  # Create a table linking the genus to the family
-  genus_to_family <- species_to_family %>%
-    dplyr::select(speciesname = query, family) %>%
-    mutate(genus = gsub(" .+", "", speciesname)) %>%
-    dplyr::select(genus, family) %>%
-    filter(!is.na(family)) %>%
-    distinct()
+  # Table linking family to order
+  data(vascular.families)
   
-  # Create a table linking the family to the branch
-  family_to_branch <- tpl_families()
-  
-  # Merge all datasets
-  species.final <- species %>%
-    mutate(genus = gsub(" ", "", genus)) %>%
-    left_join(genus_to_family, by = "genus") %>%
-    left_join(family_to_branch, by = "family")
-  species.final <- species.final %>%
-    left_join((species.final %>% 
-                 filter(!is.na(speciesname)) %>%
-                 mutate(group2 = ifelse(family %in% c("Fagaceae", "Fabaceae"), "Angiosperms", group)) %>%
-                 dplyr::select(genus, group2) %>%
-                 filter(!is.na(group2)) %>%
+  # Format the output
+  out <- extraction.original %>%
+    dplyr::select(species = species.original, 
+                  genus = New.Genus) %>% 
+    left_join((extraction.original %>%
+                 dplyr::select(genus = New.Genus, family = Family) %>%
+                 filter(!is.na(family)) %>%
+                 filter(family != "") %>%
                  distinct()), 
               by = "genus") %>%
-    dplyr::select(species, group = group2, family, genus) %>%
-    distinct()
+    left_join((vascular.families %>%
+                 dplyr::select(family = Family, group = Group) %>%
+                 rbind(data.frame(family = "Leguminosae", group = "angiosperms"))), 
+              by = "family") %>%
+    filter(!is.na(genus)) %>%
+    mutate(group = ifelse(is.na(group), group, paste(toupper(substr(group, 1, 1)), 
+                                                     substr(group, 2, nchar(group)), sep="")))
   
-  return(species.final)
+  # return output
+  return(out)
   
 }
 
@@ -322,6 +301,14 @@ generate_data_jags_stock <- function(data_model){
 }
 
 
+#' Function to correct the weight in FUNDIV tree
+#' @param FUNDIV_tree 
+correct_weight = function(FUNDIV_tree){
+  FUNDIV_tree %>%
+    mutate(weight1 = ifelse(country == "Spain", 10000/(pi*weight1^2), weight1), 
+           weight2 = ifelse(country == "Spain", 10000/(pi*weight2^2), weight2)) %>% 
+    mutate_if(is.numeric, list(~na_if(., Inf)))
+}
 
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -657,17 +644,51 @@ get_disturbance_sensivity_full <- function(jags.model, data_jags, data_model,
 
 
 #' Export jags model as R object
-#' @param jags.model.in Jags model to save
-#' @param data_jags.in dajagas object to save
+#' @param jags.model.in List of fags model to save (one list item per disturbance type)
+#' @param data_jags.in list of dajagas object to save (one list item per disturbance type)
+#' @param data_jags.in list of data_model object to save (one list item per disturbance type)
 #' @param file.in name of the file to save, including path
-export_jags <- function(jags.model.in, data_jags.in, file.in){
+export_jags <- function(jags.model.in, data_jags.in, data_model.in, file.in){
   
   # Create directory if needed
   create_dir_if_needed(file.in)
   
-  # Loop on all disturbances to remove the data in data_jags (and only keep correspondance tables)
+  # Initialize correspondence table
   corresp.tables <- list()
+  # Initialize weight table
+  weight.tables <- list()
+  # Initialize scaling table
+  scale.tables <- list()
+  
+  # Loop on all disturbances 
   for(i in 1:length(names(data_jags.in))){
+    
+    # Table containing the parameters to scale dbh and logratio
+    # -- First run some models
+    mod.dbh.i <- lm(dbh.scaled ~ dbh, data = data.frame(
+      dbh = data_model.in[[i]]$dbh, dbh.scaled = data_jags.in[[i]]$data_jags$dbh))
+    mod.logratio.i <- lm(logratio.scaled ~ logratio,  data = data.frame(
+      logratio = data_model.in[[i]]$log_dbh_dqm, logratio.scaled = data_jags.in[[i]]$data_jags$logratio))
+    # -- Store coefficients in a table
+    scale.table.i <- list(dbh.intercept = summary(mod.dbh.i)$coefficients[1, 1], 
+                          dbh.slope = summary(mod.dbh.i)$coefficients[2, 1], 
+                          logratio.intercept = summary(mod.logratio.i)$coefficients[1, 1], 
+                          logratio.slope = summary(mod.logratio.i)$coefficients[2, 1])
+    # -- Add to the list of scaling tables
+    eval(parse(text = paste0("scale.tables$", names(data_jags.in)[i], " <- scale.table.i")))
+    
+    
+    
+    # Table containing the weight of each species per disturbance type
+    weight.table.i <- data_model.in[[i]] %>%
+      group_by(species, country) %>%
+      summarize(weight = n())
+    eval(parse(text = paste0("weight.tables$", names(data_jags.in)[i], " <- weight.table.i")))
+    
+    
+    
+    
+    # Correspondence tables
     corresp.table.i <- data_jags.in[[i]][-1]
     eval(parse(text = paste0("corresp.tables$", names(data_jags.in)[i], " <- corresp.table.i")))
   }
@@ -676,7 +697,7 @@ export_jags <- function(jags.model.in, data_jags.in, file.in){
   jags.list <- jags.model.in
   
   # Save the two objects
-  save(corresp.tables, jags.list, file = file.in)
+  save(corresp.tables, jags.list, scale.tables, weight.tables, file = file.in)
   
   # Return the name of the file
   return(file.in)
@@ -773,4 +794,6 @@ export_table_disturbance_stats <- function(FUNDIV_tree, FUNDIV_plot, file.in){
   #return output
   return(file.in)
 }
+
+
 

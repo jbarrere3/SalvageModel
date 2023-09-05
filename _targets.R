@@ -24,13 +24,15 @@ lapply(grep("R$", list.files("R"), value = TRUE), function(x) source(file.path("
 packages.in <- c("dplyr", "ggplot2", "RCurl", "httr", "tidyr", "data.table", "sp", "R2jags", "rstan", "cowplot",
                  "ggmcmc", "taxize", "rnaturalearth", "ggspatial", "sf", "ggnewscale", "readxl", "scales", 
                  "FactoMineR", "ade4", "factoextra", "xtable", "MASS", "vegan", "lme4", "car", "GGally", "grid", 
-                 "betareg")
+                 "betareg", "Taxonstand", "WorldFlora")
 for(i in 1:length(packages.in)) if(!(packages.in[i] %in% rownames(installed.packages()))) install.packages(packages.in[i])
 # Targets options
 options(tidyverse.quiet = TRUE, 
         clustermq.scheduler = "multiprocess", 
         dplyr.summarise.inform = FALSE)
-tar_option_set(packages = packages.in)
+tar_option_set(packages = packages.in,
+               memory = "transient")
+future::plan(future::multisession, workers = 6)
 set.seed(2)
 
 
@@ -149,10 +151,32 @@ list(
   # Export jags objects and correspondence tables
   tar_target(rdata_dominance, export_jags(
     jags.model.in = c(jags.model, jags.model_bis), 
-    data_jags.in = c(data_jags, data_jags_bis), 
+    data_jags.in = c(data_jags, data_jags_bis),
+    data_model.in = c(data_model, data_model_bis), 
     file.in = "output/rdata/jags_dominance.Rdata"), format = "file"), 
-  tar_target(rdata_stock, export_jags(
-    jags.model.in = c(jags.model_stock, jags.model_stock_bis), 
-    data_jags.in = c(data_jags_stock, data_jags_stock_bis), 
-    file.in = "output/rdata/jags_stock.Rdata"), format = "file")
+  
+  
+  
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  # -- Step 6 Run model with corrected weight ----
+  
+  tar_target(FUNDIV_tree.cor, correct_weight(FUNDIV_tree)), 
+  tar_target(data_model.cor, format_data_model(FUNDIV_tree.cor, FUNDIV_plot, Climate, species)), 
+  tar_target(data_model_bis.cor, format_data_model(
+    FUNDIV_tree.cor, FUNDIV_plot_bis, Climate, species)), 
+  tar_target(data_jags.cor, generate_data_jags(data_model.cor)), 
+  tar_target(data_jags_bis.cor, generate_data_jags(data_model_bis.cor)), 
+  tar_target(jags.model.cor, fit_mortality(
+    data_jags.cor, n.chains = 3, n.iter = 1000, n.burn = 200, n.thin = 20)), 
+  tar_target(jags.model_bis.cor, fit_mortality(
+    data_jags_bis.cor, n.chains = 3, n.iter = 1000, n.burn = 200, n.thin = 20)), 
+  tar_target(rdata_dominance.cor, export_jags(
+    jags.model.in = c(jags.model.cor, jags.model_bis.cor), 
+    data_jags.in = c(data_jags.cor, data_jags_bis.cor),
+    data_model.in = c(data_model.cor, data_model_bis.cor), 
+    file.in = "output/rdata/jags_dominance_cor.Rdata"), format = "file"), 
+  tar_target(disturbance_sensitivity_full.cor, get_disturbance_sensivity_full(
+    jags.model.cor, data_jags.cor, data_model.cor, dbh.ref = 250, I.ref = 0.75)), 
+  tar_target(disturbance_sensitivity_full_bis.cor, get_disturbance_sensivity_full(
+    jags.model_bis.cor, data_jags_bis.cor, data_model_bis.cor, dbh.ref = 250, I.ref = 0.75))
 )

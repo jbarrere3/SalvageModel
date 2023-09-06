@@ -63,7 +63,7 @@ list(
   tar_target(Climate, rbind(Climate_FI, Climate_noFI)),
   
   # Extract species information (genus, family, order)
-  tar_target(species, get_species_info(FUNDIV_tree)),
+  tar_target(species, fread(grep("species", datafiles, value = TRUE))),
   
 
 

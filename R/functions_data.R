@@ -54,6 +54,8 @@ get_species_info <- function(FUNDIV_tree){
   return(out)
   
 }
+
+
 #' Format the data before fitting the reference mortality model
 #' @param FUNDIV_tree FUNDIV tree table
 #' @param FUNDIV_plot FUNDIV plot table
@@ -97,6 +99,9 @@ format_data_model <- function(FUNDIV_tree, FUNDIV_plot, Climate, species){
            species.ag = case_when((enough.individuals == 0 & group == "Angiosperms") ~ "Other broadleaf", 
                                   (enough.individuals == 0 & group == "Gymnosperms") ~ "Other conifer",
                                   enough.individuals == 1  ~ species)) %>%
+    mutate(species.ag = ifelse(
+      species %in% c("Robinia pseudoacacia", "Robinia pseudacacia"),
+      "Other broadleaf", species.ag)) %>%
     dplyr::select(group, species, disturbance.nature, species.ag) %>%
     filter(!(species %in% c("", " "))) %>%
     spread(key = "disturbance.nature", value = "species.ag") %>%

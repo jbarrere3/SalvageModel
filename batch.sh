@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=FinnishNFI
+#SBATCH --job-name=SalvageModel
 #SBATCH --account=project_2005142
 #SBATCH --time=30:00:00
-#SBATCH --mem-per-cpu=8000
+#SBATCH --mem-per-cpu=32G
 #SBATCH --partition=small
 
 module load r-env

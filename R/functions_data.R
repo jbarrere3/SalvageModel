@@ -729,5 +729,67 @@ export_table_disturbance_stats <- function(FUNDIV_tree, FUNDIV_plot, file.in){
   return(file.in)
 }
 
+#' Export the posterior estimates of the model parameters
+#' @param rdata.file rdata file containing correspondance table and model fit
+#' @param file.out Name of the file to save, including path
+export_param_csv = function(rdata.file, file.out){
+  
+  # Create directory if needed 
+  create_dir_if_needed(file.out)
+  
+  # Load rdata
+  load(rdata.file)
+  
+  # Loop on all disturbances
+  for(i in 1:length(names(jags.list))){
+    
+    # Format the table containing parameter value per species, disturbance and iteration
+    param.table.i <- ggs(as.mcmc(jags.list[[i]])) %>%
+      # Add disturbance
+      mutate(disturbance = names(jags.list)[i]) %>%
+      # Extract information on parameter, species and country
+      mutate(Param = gsub("\\[.+", "", Parameter), 
+             sp = as.integer(gsub(".+\\[", "", gsub("\\]", "", Parameter)))) %>%
+      # Remove the estimation of intensity and deviance
+      filter(Param != "I") %>%
+      filter(Param != "deviance") %>%
+      # Add name of the country and species, and weight of each species per country
+      left_join(corresp.tables[[i]]$species.table, by = "sp") %>%
+      # Remove useless columns
+      dplyr::select(-Parameter, -sp) %>%
+      # Format to get one column per parameter
+      spread(key = Param, value = value) %>%
+      # Set a1 to 0 (dominance effect) if disturbance is not storm or snow
+      mutate(a1 = ifelse(disturbance %in% c("storm", "snow"), a1, 0)) %>%
+      # Add parameters to scale dbh and logratio
+      mutate(dbh.intercept = scale.tables[[i]]$dbh.intercept, 
+             dbh.slope = scale.tables[[i]]$dbh.slope, 
+             logratio.intercept = scale.tables[[i]]$logratio.intercept, 
+             logratio.slope = scale.tables[[i]]$logratio.slope)
+    
+    # Store table in the final table
+    if(i == 1) param.table <- param.table.i
+    else param.table <- rbind(param.table, param.table.i)
+  }
+  
+  
+  # Summarize parameter values
+  table.out = param.table %>%
+    gather(key = "param", value = "value", "a0", "a1", "b", "c", "dbh.intercept", 
+           "dbh.slope", "logratio.intercept", "logratio.slope") %>%
+    group_by(species, param) %>%
+    summarize(value.mean = mean(value)) %>%
+    spread(key = "param", value = "value.mean") %>%
+    ungroup() %>%
+    filter(species %in% c("Picea abies", "Abies alba", "Fagus sylvatica"))
+  
+  
+  # Prepare data with predicitons for plotting
+  write.table(table.out, file.out, col.names = TRUE, row.names = FALSE)
+  
+  # return the list
+  return(file.out)
+}
+
 
 

@@ -112,5 +112,9 @@ list(
   # Export jags objects and correspondence tables
   tar_target(rdata_dominance, export_jags(
     jags.model.in = jags.model, data_jags.in = data_jags, data_model.in = data_model,
-    file.in = "output/Alps/rdata/jags_dominance.Rdata"), format = "file")
+    file.in = "output/Alps/rdata/jags_dominance.Rdata"), format = "file"), 
+  
+  # Export the mean value of the parameters
+  tar_target(param_table_csvfile, export_param_csv(
+    rdata_dominance, "output/Alps/tables/param_mean.csv"), format = "file")
 )

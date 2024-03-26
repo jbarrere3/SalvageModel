@@ -61,13 +61,16 @@ get_species_info <- function(FUNDIV_tree){
 #' @param FUNDIV_plot FUNDIV plot table
 #' @param Climate dataframe containing climatic data per plot
 #' @param species dataframe containing species information
-format_data_model <- function(FUNDIV_tree, FUNDIV_plot, Climate, species){
+#' @param NFI_bm Data containing background mortality data per treecode
+format_data_model <- function(FUNDIV_tree, FUNDIV_plot, Climate, species, NFI_bm){
   
   ## - Begin formatting final dataset
   data <- FUNDIV_tree %>%
+    mutate(plotcode = as.character(plotcode)) %>%
     # Add plot level data 
     left_join(Climate, by = "plotcode") %>% 
     left_join((FUNDIV_plot %>% 
+                 mutate(plotcode = as.character(plotcode)) %>%
                  dplyr::select(plotcode, time = yearsbetweensurveys, disturbance.nature)), 
               by = "plotcode") %>% 
     # Only keep disturbed plots since the model is only fitted with disturbed plots
@@ -84,7 +87,12 @@ format_data_model <- function(FUNDIV_tree, FUNDIV_plot, Climate, species){
     ungroup() %>%
     dplyr::select(-dead, -dead.sum) %>%
     # Add species information
-    left_join((species %>% dplyr::select(species, group)), by = "species")
+    left_join((species %>% dplyr::select(species, group)), by = "species") %>%
+    # Add annual probability of background mortality
+    left_join(NFI_bm %>% 
+                mutate(treecode = sub('..', '', treecode)) %>%
+                dplyr::select(treecode, p_bm = pmorta), by = "treecode") %>%
+    mutate(p_bm = ifelse(is.na(p_bm), mean(NFI_bm$pmorta, na.rm = TRUE), p_bm))
   
   ## - Aggregated species that are not represented well enough
   species.aggregated <- data %>%
@@ -95,7 +103,7 @@ format_data_model <- function(FUNDIV_tree, FUNDIV_plot, Climate, species){
     summarize(n.per.species = sum(n.indiv.per.plotcode), 
               n.plot.per.species = n()) %>%
     ungroup() %>%
-    mutate(enough.individuals = ifelse((n.per.species > 150 & n.plot.per.species > 15), 1, 0), 
+    mutate(enough.individuals = ifelse((n.per.species > 50 & n.plot.per.species > 10), 1, 0), 
            species.ag = case_when((enough.individuals == 0 & group == "Angiosperms") ~ "Other broadleaf", 
                                   (enough.individuals == 0 & group == "Gymnosperms") ~ "Other conifer",
                                   enough.individuals == 1  ~ species)) %>%
@@ -117,7 +125,7 @@ format_data_model <- function(FUNDIV_tree, FUNDIV_plot, Climate, species){
   
   ## - Initialize the list output and loop on all types of disturbance
   out <- list()
-  disturbances.in <- unique(data$disturbance.nature)
+  disturbances.in <- "storm"
   for(i in 1:length(disturbances.in)){
     # Output dataset for disturbance i
     data.i <- data %>%
@@ -146,7 +154,7 @@ format_data_model <- function(FUNDIV_tree, FUNDIV_plot, Climate, species){
       filter(!is.na(sgdd) & !is.na(wai) & !is.na(comp) & !is.na(species.ag)) %>%
       # Select variables and remove NAs
       dplyr::select(plotcode, treecode, country, species = species.ag, time, h, d, a, dbh = dbh1, comp, 
-                    sgdd, wai, dqm, log_dbh_dqm, stock)
+                    sgdd, wai, dqm, log_dbh_dqm, stock, p_bm)
     
     # Add to the output list
     eval(parse(text = paste0("out$", disturbances.in[i], " <- data.i")))
@@ -198,9 +206,7 @@ generate_data_jags <- function(data_model){
     # Replace species by a number 
     species.table.i <- data.frame(species = unique(data.i_scaled$species), 
                                   sp = c(1:length(unique(data.i_scaled$species))))
-    # Replace country by a number
-    country.table.i <- data.frame(country = unique(data.i_scaled$country), 
-                                  co = c(1:length(unique(data.i_scaled$country))))
+    
     # Format final data
     data.out.i <- data.i_scaled %>%
       # Determine if tree is dead or not
@@ -208,28 +214,25 @@ generate_data_jags <- function(data_model){
       # Add plot code
       left_join(plotcode.table.i, by = "plotcode") %>%
       # Add species code
-      left_join(species.table.i, by = "species") %>%
-      # Add country code
-      left_join(country.table.i, by = "country")
+      left_join(species.table.i, by = "species")
     
     # Create the data list
     data_jags.i <- list(
       Ntrees = NROW(data.out.i),
       Nplot = NROW(plotcode.table.i), 
       Nspecies = NROW(species.table.i),
-      Ncountry = NROW(country.table.i),
       plot = data.out.i$plot, 
       sp = data.out.i$sp,
       co = data.out.i$co,
       d = data.out.i$d,
       time = data.out.i$time,
       dbh = data.out.i$dbh,
-      logratio = data.out.i$log_dbh_dqm)
+      logratio = data.out.i$log_dbh_dqm, 
+      p_bm = data.out.i$p_bm)
     # Final list for disturbance i
     out.i <- list(data_jags = data_jags.i, 
                   plotcode.table = plotcode.table.i, 
-                  species.table = species.table.i, 
-                  country.table = country.table.i)
+                  species.table = species.table.i)
     # Add list i to the global list
     eval(parse(text = paste0("out$", disturbances.in[i], " <- out.i")))
     
@@ -239,66 +242,6 @@ generate_data_jags <- function(data_model){
 }
 
 
-#' generate data for the jags model with stocking as explanatory variable
-#' @param data_model dataset where the tree status (dead, alive or harvested) is not simulated
-generate_data_jags_stock <- function(data_model){
-  
-  # Initialize output list
-  out <- list()
-  
-  # Loop on all disturbances
-  disturbances.in <- names(data_model)
-  
-  for(i in 1:length(disturbances.in)){
-    # Store dataframe for disturbance i in object data.i 
-    eval(parse(text = paste0("data.i <- data_model$", disturbances.in[i])))
-    # Scale the dataset
-    data.i_scaled <- scale_data_model(data.i)
-    # Replace plotcode by a number
-    plotcode.table.i <- data.frame(plotcode = unique(data.i_scaled$plotcode), 
-                                   plot = c(1:length(unique(data.i_scaled$plotcode))))
-    # Replace species by a number 
-    species.table.i <- data.frame(species = unique(data.i_scaled$species), 
-                                  sp = c(1:length(unique(data.i_scaled$species))))
-    # Replace country by a number
-    country.table.i <- data.frame(country = unique(data.i_scaled$country), 
-                                  co = c(1:length(unique(data.i_scaled$country))))
-    # Format final data
-    data.out.i <- data.i_scaled %>%
-      # Determine if tree is dead or not
-      mutate(d = ifelse(a == 1, 0, 1)) %>%
-      # Add plot code
-      left_join(plotcode.table.i, by = "plotcode") %>%
-      # Add species code
-      left_join(species.table.i, by = "species") %>%
-      # Add country code
-      left_join(country.table.i, by = "country")
-    
-    # Create the data list
-    data_jags.i <- list(
-      Ntrees = NROW(data.out.i),
-      Nplot = NROW(plotcode.table.i), 
-      Nspecies = NROW(species.table.i),
-      Ncountry = NROW(country.table.i),
-      plot = data.out.i$plot, 
-      sp = data.out.i$sp,
-      co = data.out.i$co,
-      d = data.out.i$d,
-      time = data.out.i$time,
-      dbh = data.out.i$dbh,
-      stock = data.out.i$stock)
-    # Final list for disturbance i
-    out.i <- list(data_jags = data_jags.i, 
-                  plotcode.table = plotcode.table.i, 
-                  species.table = species.table.i, 
-                  country.table = country.table.i)
-    # Add list i to the global list
-    eval(parse(text = paste0("out$", disturbances.in[i], " <- out.i")))
-    
-  }
-  
-  return(out)
-}
 
 
 #' Function to correct the weight in FUNDIV tree
@@ -351,14 +294,7 @@ extract_param_per_species <- function(jags.model.in, data_jags.in){
     filter(Parameter != "deviance") %>%
     # Separate species code from parameter, and add disturbance
     mutate(Parameter.true = gsub("\\[.+\\]", "", Parameter), 
-           sp_country = gsub("\\]", "", gsub(".+\\[", "", Parameter)), 
-           sp = as.integer(gsub("\\,.+", "", sp_country)), 
-           co = ifelse(sp == sp_country, NA_integer_, as.integer(gsub(".+\\,", "", sp_country)))) %>%
-    # Add country information
-    left_join(data_jags.in$country.table, by = "co") %>%
-    group_by(sp, Parameter.true, Chain, Iteration, country) %>%
-    summarise(value = mean(value)) %>%
-    ungroup() %>%
+           sp = as.integer(gsub("\\]", "", gsub(".+\\[", "", Parameter)))) %>%
     # Merge iteration and chain
     mutate(iter = paste0("chain", Chain, "_iter", Iteration)) %>%
     # Remove intensity
@@ -366,13 +302,7 @@ extract_param_per_species <- function(jags.model.in, data_jags.in){
     # Add species name
     left_join(data_jags.in$species.table, by = "sp") %>%
     # Finish formatting
-    dplyr::select(species, iter, parameter = Parameter.true, value, country)
-  
-  # Fill the blanks for parameters that are not country specific
-  out <- rbind.data.frame(
-    subset(out, !is.na(country)), 
-    merge(out %>% filter(is.na(country)) %>% dplyr::select(-country), 
-          data.frame(country = data_jags.in$country.table$country))) %>%
+    dplyr::select(species, iter, parameter = Parameter.true, value) %>%
     spread(key = "parameter", value = "value")
   
   return(out)
@@ -388,6 +318,7 @@ extract_param_per_species <- function(jags.model.in, data_jags.in){
 #' @param data_model Tree data formatted for the IPM. 
 #' @param dir.in Directory where to save the plots
 predict_jags_meanProba <- function(jags.model, data_jags, data_model){
+  
   
   # Initialize output
   out <- list()
@@ -405,19 +336,21 @@ predict_jags_meanProba <- function(jags.model, data_jags, data_model){
              logratio.scaled = data_jags[[i]]$data_jags$logratio, 
              dead = ifelse(a == 1, 0, 1)) %>%
       dplyr::select(treecode, plotcode, country, species, dbh, logratio = log_dbh_dqm, 
-                    disturbance, dbh.scaled, logratio.scaled, time, dead) %>%
+                    disturbance, dbh.scaled, logratio.scaled, time, dead, p_bm) %>%
       # Add intensity per plotcode
       left_join(extract_intensity_per_plotcode(jags.model[[i]], data_jags[[i]]), 
                 by = "plotcode") %>%
       gather(key = "iter", value = "I", colnames(.)[grep("chain", colnames(.))]) %>%
       # Add parameter per species
       left_join(extract_param_per_species(jags.model[[i]], data_jags[[i]]), 
-                by = c("species", "iter", "country")) %>%
+                by = c("species", "iter")) %>%
       # Add missing parameter
       mutate(a1 = ifelse(disturbance %in% c("storm", "snow"), a1, NA_real_)) %>%
       # Calculate death probability depending on the model
-      mutate(pd = case_when(disturbance %in% c("storm", "snow") ~ 1 - (1 - plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c))^time, 
-                            TRUE ~ 1 - (1 - plogis(a0 + b*I*dbh.scaled^c))^time)) %>%
+      mutate(p_d = ifelse(disturbance %in% c("storm", "snow"), 
+                          plogis(a0 + a1*logratio.scaled + b*I*dbh.scaled^c), 
+                          plogis(a0 + b*I*dbh.scaled^c)), 
+             pd = 1 - (1 - p_d)*((1 - p_bm)^time)) %>%
       # Average probabilities by treecode
       group_by(treecode) %>%
       summarise(p = mean(pd), 
@@ -428,8 +361,9 @@ predict_jags_meanProba <- function(jags.model, data_jags, data_model){
     eval(parse(text = paste0("out$", disturbances.in[i], " <- data.i")))
   }
   
-  # return the name of all the plots made
+  # return the output list
   return(out)
+  
 }
 
 
@@ -681,7 +615,7 @@ export_jags <- function(jags.model.in, data_jags.in, data_model.in, file.in){
     
     # Table containing the weight of each species per disturbance type
     weight.table.i <- data_model.in[[i]] %>%
-      group_by(species, country) %>%
+      group_by(species) %>%
       summarize(weight = n())
     eval(parse(text = paste0("weight.tables$", names(data_jags.in)[i], " <- weight.table.i")))
     
